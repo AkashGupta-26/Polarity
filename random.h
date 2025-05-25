@@ -26,4 +26,4 @@ U64 generateMagicNumber(){
     return generateRandomU64() & generateRandomU64() & generateRandomU64();
 }
 
-#endif // RANDOM_H
+#endif // RANDOM_H;

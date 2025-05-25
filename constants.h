@@ -26,7 +26,7 @@
 #define cmk_position "r2q1rk1/ppp2ppp/2n1bn2/2b1p3/3pP3/3P1NPP/PPP1NPB1/R1BQ1RK1 b - - 0 9"
 
 enum {
-    P, B, N, R, Q, K, p, b, n, r, q, k, none
+    P, N, B, R, Q, K, p, n, b, r, q, k, none
 };
 
 enum {
@@ -110,4 +110,4 @@ void printBitboard(U64 bitboard) {
 #define AB_FILE (A_FILE | B_FILE)
 #define GH_FILE (G_FILE | H_FILE)
 
-#endif // CONSTANTS_H
+#endif // CONSTANTS_H;

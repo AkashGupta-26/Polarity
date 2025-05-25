@@ -38,14 +38,14 @@ void clearBoard(Board& board) {
     board.enPassantSquare = noSquare; // No en passant square
 }
 
-const void printBoard(Board& board){
+void printBoard(Board& board){
     U64* bitboards = board.bitboards;
     int sideToMove = board.sideToMove;
     int castlingRights = board.castlingRights;
     int enPassantSquare = board.enPassantSquare;
-    
+    std::cout << "\n";
     for (int rank = 7; rank >= 0; --rank) {
-        std::cout << rank + 1 << " ";
+        std::cout << rank + 1 << "  ";
         for (int file = 0; file < 8; ++file) {
             int square = rank * 8 + file;
             int piece = none;
@@ -60,7 +60,7 @@ const void printBoard(Board& board){
         }
         std::cout << std::endl;
     }
-    std::cout << "  a b c d e f g h\n\n";
+    std::cout << "\n   a b c d e f g h\n\n";
     std::cout << "    Side: " << (sideToMove == white ? "white" : "black") << std::endl;
     std::cout << "Castling: ";
     if (castlingRights & wk) std::cout << "K";
@@ -73,7 +73,7 @@ const void printBoard(Board& board){
         std::cout << indexToSquare[enPassantSquare];
     else
         std::cout << "None";
-    std::cout << std::endl;
+    std::cout << std::endl << std::endl;
 }
 
 void parseFEN(Board& board, const std::string& fen) {
@@ -100,7 +100,7 @@ void parseFEN(Board& board, const std::string& fen) {
     // Set occupancies
     for (int piece = P; piece <= K; ++piece) board.occupancies[white] |= board.bitboards[piece];
     for (int piece = p; piece <= k; ++piece) board.occupancies[black] |= board.bitboards[piece];
-    board.occupancies[2] = board.occupancies[white] | board.occupancies[black];
+    board.occupancies[both] = board.occupancies[white] | board.occupancies[black];
     board.occupancies[3] = ~board.occupancies[2];
 
     // Set side to move

@@ -1,5 +1,5 @@
-#ifndef MOVE_H
-#define MOVE_H
+#ifndef PRECALCULATED_MOVE_TABLES_H
+#define PRECALCULATED_MOVE_TABLES_H
 
 #include "board.h"
 #include "random.h"
@@ -440,6 +440,4 @@ void initializeMoveTables() {
     initializeSliderAttacks(rook);
 }
 
-#endif // MOVE_H;
-
-
+#endif // PRECALCULATED_MOVE_TABLES_H

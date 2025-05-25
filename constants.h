@@ -65,6 +65,10 @@ const std::unordered_map<char, int> pieceMap = {
     {'p', p}, {'b', b}, {'n', n}, {'r', r}, {'q', q}, {'k', k}
 };
 
+const std::unordered_map<int, char> promotedPieceMap = {
+    {0, ' '}, {N, 'n'}, {B, 'b'}, {R, 'r'}, {Q, 'q'}, 
+    {none, ' '}, {n, 'n'}, {b, 'b'}, {r, 'r'}, {q, 'q'},
+};
 
 
 const std::string indexToSquare[64] = {
@@ -109,5 +113,21 @@ void printBitboard(U64 bitboard) {
 
 #define AB_FILE (A_FILE | B_FILE)
 #define GH_FILE (G_FILE | H_FILE)
+
+// Rank bitboard macros
+#define RANK_1 0x00000000000000FFULL
+#define RANK_2 0x000000000000FF00ULL
+#define RANK_3 0x0000000000FF0000ULL
+#define RANK_4 0x00000000FF000000ULL
+#define RANK_5 0x000000FF00000000ULL
+#define RANK_6 0x0000FF0000000000ULL
+#define RANK_7 0x00FF000000000000ULL
+#define RANK_8 0xFF00000000000000ULL
+
+// Time in milliseconds
+#define TIME_IN_MILLISECONDS std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count()
+
+// Time in microseconds
+#define TIME_IN_MICROSECONDS std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now().time_since_epoch()).count()
 
 #endif // CONSTANTS_H;

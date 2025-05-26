@@ -5,6 +5,53 @@
 #include "precalculated_move_tables.h"
 
 /*
+wk = 0001, wq = 0010, bk = 0100, bq = 1000
+
+kings and rook dont move - 1111 & 1111 = 1111
+white king moved - 1111 & 1100 = 1100
+white K rook moved - 1111 & 1110 = 1110
+white Q rook moved - 1111 & 1101 = 1101
+
+black king moved - 1111 & 0011 = 0011
+black K rook moved - 1111 & 1011 = 1011 
+black Q rook moved - 1111 & 0111 = 0111
+*/
+
+const int castlingUpdate[64] = {
+    13, 15, 15, 15, 12, 15, 15, 14,
+    15, 15, 15, 15, 15, 15, 15, 15,
+    15, 15, 15, 15, 15, 15, 15, 15,
+    15, 15, 15, 15, 15, 15, 15, 15,
+    15, 15, 15, 15, 15, 15, 15, 15,
+    15, 15, 15, 15, 15, 15, 15, 15,
+    15, 15, 15, 15, 15, 15, 15, 15,
+     7, 15, 15, 15,  3, 15, 15, 11,
+};
+
+static inline int isSquareAttacked(const Board *board, int square, int side) {
+    // Check if the square is attacked by any piece of the side given
+    if ((side == white) && (pawnAttacks[black][square] & board->bitboards[P])) return 1;
+    if ((side == black) && (pawnAttacks[white][square] & board->bitboards[p])) return 1;
+    if (knightAttacks[square] & ((side == white) ? board->bitboards[N] : board->bitboards[n])) return 1;
+    if (kingAttacks[square] & ((side == white) ? board->bitboards[K] : board->bitboards[k])) return 1;
+
+    if (getRookAttacks(square, board->occupancies[both]) & ((side == white) ? board->bitboards[R] : board->bitboards[r])) return 1;
+    if (getBishopAttacks(square, board->occupancies[both]) & ((side == white) ? board->bitboards[B] : board->bitboards[b])) return 1;
+    if (getQueenAttacks(square, board->occupancies[both]) & ((side == white) ? board->bitboards[Q] : board->bitboards[q])) return 1;
+    return 0;
+}
+
+void printAttackedSquares(const Board *board, int side) {
+    std::cout << "Attacked squares by " << (side == white ? "White" : "Black") << ":\n";
+    U64 attacked = 0ULL;
+    for (int square = 0; square < 64; ++square) {
+        if (isSquareAttacked(board, square, side)) setBit(attacked, square);
+    }
+    printBitboard(attacked);
+    std::cout << "Total attacked squares: " << countBits(attacked) << std::endl << std::endl;
+}
+
+/*
     Move encoding scheme: 
     0000 0000 0000 0000 0011 1111    0x3f        source square  
     0000 0000 0000 1111 1100 0000    0xfc0       target square
@@ -40,12 +87,14 @@ static inline void addMove(MoveList *list, int move) {
     else printf("Move list is full, cannot add more moves.\nLast move: %d\n", move);
 }
 
-void generateMoves(Board *board, MoveList *moves) {
+static inline void generateMoves(Board *board, MoveList *moves) {
     moves->count = 0;
-    // Pawn moves
+    
     int move;
     int source, target;
     U64 bitboard, attacks;
+
+    // Pawn moves
     if (board -> sideToMove == white){
         bitboard = board->bitboards[P];
         //Quiet Moves
@@ -157,6 +206,140 @@ void generateMoves(Board *board, MoveList *moves) {
             popBit(bitboard, source); // Clear the least significant bit
         }
     }
+
+    // Normal King Moves
+    bitboard = board->bitboards[board->sideToMove == white ? K : k];
+    while (bitboard){
+        source = getLSBindex(bitboard);
+        attacks = kingAttacks[source] & ((board->sideToMove == white) ? ~board->occupancies[white] : ~board->occupancies[black]);
+        while (attacks) {
+            target = getLSBindex(attacks);
+            //quiet move
+            if (!getBit((board->sideToMove == white)?board->occupancies[black]:board->occupancies[white], target)) {
+                addMove(moves, encodeMove(source, target, (board->sideToMove == white) ? K : k, 0, 0, 0, 0, 0));
+            }
+            //capture move
+            else {
+                addMove(moves, encodeMove(source, target, (board->sideToMove == white) ? K : k, 0, 1, 0, 0, 0));
+            }
+            popBit(attacks, target); // Clear the least significant bit
+        }
+        popBit(bitboard, source); // Clear the least significant bit
+    }
+
+    // Castle Moves
+    if (board->sideToMove == white){
+        if (board->castlingRights & wk){
+            if (!getBit(board->occupancies[both], f1) && !getBit(board->occupancies[both], g1)) {
+                if (!isSquareAttacked(board, e1, black) && !isSquareAttacked(board, f1, black)) {
+                    addMove(moves, encodeMove(e1, g1, K, 0, 0, 0, 0, 1)); // O-O
+                }
+            }
+        }
+        if (board->castlingRights & wq){
+            if (!getBit(board->occupancies[both], d1) && !getBit(board->occupancies[both], c1) && !getBit(board->occupancies[both], b1)) {
+                if (!isSquareAttacked(board, e1, black) && !isSquareAttacked(board, d1, black)) {
+                    addMove(moves, encodeMove(e1, c1, K, 0, 0, 0, 0, 1)); // O-O-O
+                }
+            }
+        }
+    }
+    else {
+        if (board->castlingRights & bk){
+            if (!getBit(board->occupancies[both], f8) && !getBit(board->occupancies[both], g8)) {
+                if (!isSquareAttacked(board, e8, white) && !isSquareAttacked(board, f8, white)) {
+                    addMove(moves, encodeMove(e8, g8, k, 0, 0, 0, 0, 1)); // O-O
+                }
+            }
+        }
+        if (board->castlingRights & bq){
+            if (!getBit(board->occupancies[both], d8) && !getBit(board->occupancies[both], c8) && !getBit(board->occupancies[both], b8)) {
+                if (!isSquareAttacked(board, e8, white) && !isSquareAttacked(board, d8, white)) {
+                    addMove(moves, encodeMove(e8, c8, k, 0, 0, 0, 0, 1)); // O-O-O
+                }
+            }
+        }
+    }
+    
+    // Knight Moves
+    bitboard = board->bitboards[(board->sideToMove == white) ? N : n];
+    while (bitboard) {
+        source = getLSBindex(bitboard);
+        attacks = knightAttacks[source] & ((board->sideToMove == white) ? ~board->occupancies[white] : ~board->occupancies[black]);
+        while (attacks) {
+            target = getLSBindex(attacks);
+            //quiet move
+            if (!getBit((board->sideToMove == white)?board->occupancies[black]:board->occupancies[white], target)) {
+                addMove(moves, encodeMove(source, target, (board->sideToMove == white) ? N : n, 0, 0, 0, 0, 0));
+            }
+            //capture move
+            else {
+                addMove(moves, encodeMove(source, target, (board->sideToMove == white) ? N : n, 0, 1, 0, 0, 0));
+            }
+            popBit(attacks, target); // Clear the least significant bit
+        }
+        popBit(bitboard, source); // Clear the least significant bit
+    }
+
+    // Bishop Moves
+    bitboard = board->bitboards[(board->sideToMove == white) ? B : b];
+    while (bitboard) {
+        source = getLSBindex(bitboard);
+        attacks = getBishopAttacks(source, board->occupancies[both]) & ((board->sideToMove == white) ? ~board->occupancies[white] : ~board->occupancies[black]);
+        while (attacks) {
+            target = getLSBindex(attacks);
+            //quiet move
+            if (!getBit((board->sideToMove == white)?board->occupancies[black]:board->occupancies[white], target)) {
+                addMove(moves, encodeMove(source, target, (board->sideToMove == white) ? B : b, 0, 0, 0, 0, 0));
+            }
+            //capture move
+            else {
+                addMove(moves, encodeMove(source, target, (board->sideToMove == white) ? B : b, 0, 1, 0, 0, 0));
+            }
+            popBit(attacks, target); // Clear the least significant bit
+        }
+        popBit(bitboard, source); // Clear the least significant bit
+    }
+
+    // Rook Moves
+    bitboard = board->bitboards[(board->sideToMove == white) ? R : r];
+    while (bitboard) {
+        source = getLSBindex(bitboard);
+        attacks = getRookAttacks(source, board->occupancies[both]) & ((board->sideToMove == white) ? ~board->occupancies[white] : ~board->occupancies[black]);
+        while (attacks) {
+            target = getLSBindex(attacks);
+            //quiet move
+            if (!getBit((board->sideToMove == white)?board->occupancies[black]:board->occupancies[white], target)) {
+                addMove(moves, encodeMove(source, target, (board->sideToMove == white) ? R : r, 0, 0, 0, 0, 0));
+            }
+            //capture move
+            else {
+                addMove(moves, encodeMove(source, target, (board->sideToMove == white) ? R : r, 0, 1, 0, 0, 0));
+            }
+            popBit(attacks, target); // Clear the least significant bit
+        }
+        popBit(bitboard, source); // Clear the least significant bit
+    }
+
+    // Queen Moves
+    bitboard = board->bitboards[(board->sideToMove == white) ? Q : q];
+    while (bitboard) {
+        source = getLSBindex(bitboard);
+        attacks = getQueenAttacks(source, board->occupancies[both]) & ((board->sideToMove == white) ? ~board->occupancies[white] : ~board->occupancies[black]);
+        while (attacks) {
+            target = getLSBindex(attacks);
+            //quiet move
+            if (!getBit((board->sideToMove == white)?board->occupancies[black]:board->occupancies[white], target)) {
+                addMove(moves, encodeMove(source, target, (board->sideToMove == white) ? Q : q, 0, 0, 0, 0, 0));
+            }
+            //capture move
+            else {
+                addMove(moves, encodeMove(source, target, (board->sideToMove == white) ? Q : q, 0, 1, 0, 0, 0));
+            }
+            popBit(attacks, target); // Clear the least significant bit
+        }
+        popBit(bitboard, source); // Clear the least significant bit
+    }
 }
 
 void printMove(int move){
@@ -195,6 +378,93 @@ void printMoveList(const MoveList *list) {
                   << (enPassant ? "1" : "0") << "      "
                   << (castling ? "1" : "0") << std::endl;
     }
+
+    std::cout << "Total Moves: " << list->count << std::endl << std::endl;
 }
+
+
+static inline int makeMove(Board &board, int move, int onlyCaptures = 0){
+
+    if (onlyCaptures && !decodeCapture(move)) {
+        return 0; // If only captures are allowed and this move is not a capture, return 0
+    }
+
+    copyBoard(board); // Backup the current board state
+
+    int source = decodeSource(move);
+    int target = decodeTarget(move);
+    int piece = decodePiece(move);
+    int promotedPiece = decodePromoted(move);
+    int capture = decodeCapture(move);
+    int doublePush = decodeDoublePush(move);
+    int enPass = decodeEnPassant(move);
+    int castling = decodeCastling(move);
+
+    popBit(board.bitboards[piece], source);
+    setBit(board.bitboards[piece], target);
+
+    if (capture){
+        int startPiece, endPiece;
+        startPiece = (board.sideToMove == white) ? p : P;
+        endPiece = (board.sideToMove == white) ? k : K;
+        for (int bbPiece = startPiece; bbPiece <= endPiece; ++bbPiece) {
+            if (getBit(board.bitboards[bbPiece], target)) {
+                popBit(board.bitboards[bbPiece], target);
+                break;
+            }
+        }
+    }
+    if (promotedPiece) {
+        popBit(board.bitboards[piece], target);
+        setBit(board.bitboards[promotedPiece], target);
+    }
+
+    if (enPass){
+        popBit(board.bitboards[(board.sideToMove == white) ? p : P], target + (board.sideToMove == white ? -8 : 8));
+    }
+
+    board.enPassantSquare = noSquare; // Reset en passant square
+    if (doublePush) {
+        board.enPassantSquare = target + (board.sideToMove == white ? -8 : 8); // Set en passant square
+    }
+    if (castling) {
+        switch(target){
+            case g1: // White kingside castle
+                popBit(board.bitboards[R], h1);
+                setBit(board.bitboards[R], f1);
+                break;
+            case c1: // White queenside castle
+                popBit(board.bitboards[R], a1);
+                setBit(board.bitboards[R], d1);
+                break;
+            case g8: // Black kingside castle 
+                popBit(board.bitboards[r], h8);
+                setBit(board.bitboards[r], f8);
+                break;
+            case c8: // Black queenside castle
+                popBit(board.bitboards[r], a8);
+                setBit(board.bitboards[r], d8);
+                break;
+        }
+    }
+
+    board.castlingRights &= castlingUpdate[source]; // Update castling rights
+    board.castlingRights &= castlingUpdate[target]; // Update castling rights
+
+    memset(board.occupancies, 0ULL, sizeof(board.occupancies));
+    board.occupancies[white] = board.bitboards[P] | board.bitboards[N] | board.bitboards[B] | board.bitboards[R] | board.bitboards[Q] | board.bitboards[K];
+    board.occupancies[black] = board.bitboards[p] | board.bitboards[n] | board.bitboards[b] | board.bitboards[r] | board.bitboards[q] | board.bitboards[k];
+    board.occupancies[both] = board.occupancies[white] | board.occupancies[black];
+    board.occupancies[3] = ~board.occupancies[both]; // Empty squares
+    board.sideToMove ^= 1;
+
+    // Check if the move puts the king in check
+    if (isSquareAttacked(&board, (board.sideToMove == white) ? getLSBindex(board.bitboards[k]) : getLSBindex(board.bitboards[K]), board.sideToMove)) {
+        takeBack(board, backup); // Restore the board state if the move is illegal
+        return 0; // Illegal move
+    }
+    // If the move is legal, return 1
+    return 1;
+}   
 
 #endif // MOVES_H;

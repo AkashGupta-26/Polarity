@@ -56,6 +56,10 @@ enum {
     pawn, knight, king
 };
 
+enum {
+    allMoves, OnlyCaptures
+};
+
 char asciiPieces[13] = "PNBRQKpnbrqk";
 
 const char *unicode_pieces[12] = {"♟︎", "♞", "♝", "♜", "♛", "♚", "♙", "♘", "♗", "♖", "♕", "♔"};

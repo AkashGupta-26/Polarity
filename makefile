@@ -6,7 +6,7 @@ DEPFLAGS := -MMD -MP
 
 SRCS := engine.cpp perftValidate.cpp
 OBJS := $(SRCS:.cpp=.o)
-DEPS := $(SRCS:.cpp=.d)
+#DEPS := $(SRCS:.cpp=.d)
 TARGETS := engine perftValidate
 
 all: CXXFLAGS += $(OPTFLAGS)

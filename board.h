@@ -3,6 +3,7 @@
 
 #include "constants.h"
 #include <sstream>
+#include <cstring>
 
 /*
     This is our board representation 
@@ -20,6 +21,13 @@
     LSB is a1, MSB is h8
 
 */
+
+#define copyBoard(board) \
+    Board backup; \
+    memcpy(&backup, &board, sizeof(Board));
+
+#define takeBack(board, backup) \
+    memcpy(&board, &backup, sizeof(Board));
 
 struct Board{
     U64 bitboards[12]; // 12 types of pieces (6 white, 6 black)

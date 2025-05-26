@@ -32,7 +32,7 @@ int main() {
         string fen = segment;
 
         Board board;
-        parseFEN(board, fen);
+        parseFEN(&board, fen);
         cout << "\nFEN: " << fen << "\n";
 
         while (getline(ss, segment, ';')) {
@@ -51,7 +51,7 @@ int main() {
             U64 expected = stoull(val_token);
             totalTests++;
 
-            U64 result = perftTest(board, depth);
+            U64 result = perftTest(&board, depth);
             if (result != expected) {
                 cout << "  X Depth " << depth << ": expected " << expected << ", got " << result << "\n";
                 failedTests++;

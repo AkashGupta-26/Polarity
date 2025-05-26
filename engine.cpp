@@ -1,9 +1,9 @@
-#include "constants.h"
-#include "board.h"
-#include "precalculated_move_tables.h"
-#include "moves.h"
-#include "perft.h"
-
+// #include "constants.h"
+// #include "board.h"
+// #include "precalculated_move_tables.h"
+// #include "moves.h"
+// #include "perft.h"
+#include "evaluate.h"
 using namespace std;
 
 int parseMove(Board *board, const string &moveStr) {
@@ -37,7 +37,7 @@ int parseMove(Board *board, const string &moveStr) {
 }
 
 
-void parsePosition(Board &board, const string &input) {
+void parsePosition(Board *board, const string &input) {
     // Supports "position startpos moves ..." and "position fen ..."
 
     if (input.find("startpos") != string::npos) {
@@ -56,7 +56,7 @@ void parsePosition(Board &board, const string &input) {
         stringstream ss(input.substr(movesPos + 6));
         string moveStr;
         while (ss >> moveStr) {
-            int move = parseMove(&board, moveStr);
+            int move = parseMove(board, moveStr);
             if (move) {
                 makeMove(board, move);
             } else {
@@ -67,7 +67,7 @@ void parsePosition(Board &board, const string &input) {
 }
 
 
-void parseGo(Board &board, const string &input) {
+void parseGo(Board *board, const string &input) {
     // Handles "go depth 10"
     int depth = 6; // Default depth
     size_t pos = input.find("depth ");
@@ -79,7 +79,7 @@ void parseGo(Board &board, const string &input) {
     // Add search logic here
 }
 
-void uci(Board &board) {
+void uci(Board *board) {
     string input;
     while (getline(cin, input)) {
         if (input.empty()) continue; // Skip empty lines
@@ -103,8 +103,7 @@ void uci(Board &board) {
             if (pos != string::npos) {
                 depth = stoi(input.substr(pos + 6));
             }
-            long long nodes = perftTest(board, depth, 1);
-            cout << "Total nodes at depth " << depth << ": " << nodes << endl;
+            perftTest(board, depth, 1);
         } else if (input == "ucinewgame") {
             parsePosition(board, "position startpos");
         } else {
@@ -115,8 +114,11 @@ void uci(Board &board) {
 
 
 int main(){
+    cout << "Welcome to Polarity Chess Engine!" << endl;
     initializeMoveTables();
     Board board;
-    uci(board);
+    parseFEN(&board, "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
+    printBoard(&board);
+    perftTest(&board, 6, 1); // Run a perft test at depth 3
     return 0;
 }

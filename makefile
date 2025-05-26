@@ -1,5 +1,5 @@
 CXX := g++
-CXXFLAGS := -w -std=c++17 -fno-sized-deallocation
+CXXFLAGS := -Wall -std=c++17 -fno-sized-deallocation
 OPTFLAGS := -O3 -march=native -flto
 DEBUGFLAGS := -g
 DEPFLAGS := -MMD -MP

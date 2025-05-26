@@ -24,10 +24,10 @@
 
 #define copyBoard(board) \
     Board backup; \
-    memcpy(&backup, &board, sizeof(Board));
+    memcpy(&backup, board, sizeof(Board));
 
 #define takeBack(board, backup) \
-    memcpy(&board, &backup, sizeof(Board));
+    memcpy(board, &backup, sizeof(Board));
 
 struct Board{
     U64 bitboards[12]; // 12 types of pieces (6 white, 6 black)
@@ -37,20 +37,21 @@ struct Board{
     int enPassantSquare; // Square for en passant capture
 };
 
-void clearBoard(Board& board) {
-    memset(board.bitboards, 0, sizeof(board.bitboards));
-    memset(board.occupancies, 0, sizeof(board.occupancies));
+void clearBoard(Board* board) {
+    memset(board->bitboards, 0, sizeof(board->bitboards));
+    memset(board->occupancies, 0, sizeof(board->occupancies));
 
-    board.sideToMove = white; // Default to white
-    board.castlingRights = 0; // No castling rights
-    board.enPassantSquare = noSquare; // No en passant square
+    board->sideToMove = white; // Default to white
+    board->castlingRights = 0; // No castling rights
+    board->enPassantSquare = noSquare; // No en passant square
 }
 
-void printBoard(Board& board){
-    U64* bitboards = board.bitboards;
-    int sideToMove = board.sideToMove;
-    int castlingRights = board.castlingRights;
-    int enPassantSquare = board.enPassantSquare;
+void printBoard(Board* board) {
+    U64* bitboards = board->bitboards;
+    int sideToMove = board->sideToMove;
+    int castlingRights = board->castlingRights;
+    int enPassantSquare = board->enPassantSquare;
+
     std::cout << "\n";
     for (int rank = 7; rank >= 0; --rank) {
         std::cout << rank + 1 << "  ";
@@ -84,7 +85,7 @@ void printBoard(Board& board){
     std::cout << std::endl << std::endl;
 }
 
-void parseFEN(Board& board, const std::string& fen) {
+void parseFEN(Board* board, const std::string& fen) {
     clearBoard(board);
     std::istringstream iss(fen);
     std::string boardPart, side, castling, enPassant;
@@ -100,28 +101,28 @@ void parseFEN(Board& board, const std::string& fen) {
             square += c - '0'; // Skip empty squares
         } else {
             int piece = pieceMap.at(c);
-            setBit(board.bitboards[piece], square);
+            setBit(board->bitboards[piece], square);
             square++;
         }
     }
 
     // Set occupancies
-    for (int piece = P; piece <= K; ++piece) board.occupancies[white] |= board.bitboards[piece];
-    for (int piece = p; piece <= k; ++piece) board.occupancies[black] |= board.bitboards[piece];
-    board.occupancies[both] = board.occupancies[white] | board.occupancies[black];
-    board.occupancies[3] = ~board.occupancies[2];
+    for (int piece = P; piece <= K; ++piece) board->occupancies[white] |= board->bitboards[piece];
+    for (int piece = p; piece <= k; ++piece) board->occupancies[black] |= board->bitboards[piece];
+    board->occupancies[both] = board->occupancies[white] | board->occupancies[black];
+    board->occupancies[3] = ~board->occupancies[2];
 
     // Set side to move
-    board.sideToMove = (side == "w") ? white : black;
+    board->sideToMove = (side == "w") ? white : black;
 
     // Set castling rights
-    board.castlingRights = 0;
+    board->castlingRights = 0;
     for (char c : castling) {
         switch (c) {
-            case 'K': board.castlingRights |= wk; break;
-            case 'Q': board.castlingRights |= wq; break;
-            case 'k': board.castlingRights |= bk; break;
-            case 'q': board.castlingRights |= bq; break;
+            case 'K': board->castlingRights |= wk; break;
+            case 'Q': board->castlingRights |= wq; break;
+            case 'k': board->castlingRights |= bk; break;
+            case 'q': board->castlingRights |= bq; break;
         }
     }
 
@@ -129,9 +130,9 @@ void parseFEN(Board& board, const std::string& fen) {
     if (enPassant != "-") {
         int file = enPassant[0] - 'a';
         int rank = enPassant[1] - '1';
-        board.enPassantSquare = rank * 8 + file;
+        board->enPassantSquare = rank * 8 + file;
     } else {
-        board.enPassantSquare = noSquare;
+        board->enPassantSquare = noSquare;
     }
 }
 

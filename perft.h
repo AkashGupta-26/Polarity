@@ -8,14 +8,14 @@
 
 long long nodes = 0;
 
-void perft(Board &board, int depth) {
+void perft(Board *board, int depth) {
     if (depth == 0) {
         nodes++;
         return;
     }
 
     MoveList moves[1];
-    generateMoves(&board, moves);
+    generateMoves(board, moves);
     copyBoard(board);
 
     for (int i = 0; i < moves->count; ++i) {
@@ -26,10 +26,10 @@ void perft(Board &board, int depth) {
     }
 }
 
-int perftTest(Board &board, int depth, int verbose = 0) {
+int perftTest(Board *board, int depth, int verbose = 0) {
     nodes = 0; // Reset nodes count
     MoveList moves[1];
-    generateMoves(&board, moves);
+    generateMoves(board, moves);
     copyBoard(board);
     int cumNodes = 0;
     auto startTime = TIME_IN_MICROSECONDS;

@@ -382,10 +382,9 @@ void printMoveList(const MoveList *list) {
 }
 
 
-static inline int makeMove(Board &board, int move, int onlyCaptures = 0){
-
+static inline int makeMove(Board *board, int move, int onlyCaptures = 0) {
     if (onlyCaptures && !decodeCapture(move)) {
-        return 0; // If only captures are allowed and this move is not a capture, return 0
+        return 0;
     }
 
     copyBoard(board); // Backup the current board state
@@ -399,71 +398,77 @@ static inline int makeMove(Board &board, int move, int onlyCaptures = 0){
     int enPass = decodeEnPassant(move);
     int castling = decodeCastling(move);
 
-    popBit(board.bitboards[piece], source);
-    setBit(board.bitboards[piece], target);
+    popBit(board->bitboards[piece], source);
+    setBit(board->bitboards[piece], target);
 
-    if (capture){
-        int startPiece, endPiece;
-        startPiece = (board.sideToMove == white) ? p : P;
-        endPiece = (board.sideToMove == white) ? k : K;
+    if (capture) {
+        int startPiece = (board->sideToMove == white) ? p : P;
+        int endPiece = (board->sideToMove == white) ? k : K;
         for (int bbPiece = startPiece; bbPiece <= endPiece; ++bbPiece) {
-            if (getBit(board.bitboards[bbPiece], target)) {
-                popBit(board.bitboards[bbPiece], target);
+            if (getBit(board->bitboards[bbPiece], target)) {
+                popBit(board->bitboards[bbPiece], target);
                 break;
             }
         }
     }
+
     if (promotedPiece) {
-        popBit(board.bitboards[piece], target);
-        setBit(board.bitboards[promotedPiece], target);
+        popBit(board->bitboards[piece], target);
+        setBit(board->bitboards[promotedPiece], target);
     }
 
-    if (enPass){
-        popBit(board.bitboards[(board.sideToMove == white) ? p : P], target + (board.sideToMove == white ? -8 : 8));
+    if (enPass) {
+        popBit(board->bitboards[(board->sideToMove == white) ? p : P], target + (board->sideToMove == white ? -8 : 8));
     }
 
-    board.enPassantSquare = noSquare; // Reset en passant square
+    board->enPassantSquare = noSquare;
     if (doublePush) {
-        board.enPassantSquare = target + (board.sideToMove == white ? -8 : 8); // Set en passant square
+        board->enPassantSquare = target + (board->sideToMove == white ? -8 : 8);
     }
+
     if (castling) {
-        switch(target){
-            case g1: // White kingside castle
-                popBit(board.bitboards[R], h1);
-                setBit(board.bitboards[R], f1);
+        switch (target) {
+            case g1:
+                popBit(board->bitboards[R], h1);
+                setBit(board->bitboards[R], f1);
                 break;
-            case c1: // White queenside castle
-                popBit(board.bitboards[R], a1);
-                setBit(board.bitboards[R], d1);
+            case c1:
+                popBit(board->bitboards[R], a1);
+                setBit(board->bitboards[R], d1);
                 break;
-            case g8: // Black kingside castle 
-                popBit(board.bitboards[r], h8);
-                setBit(board.bitboards[r], f8);
+            case g8:
+                popBit(board->bitboards[r], h8);
+                setBit(board->bitboards[r], f8);
                 break;
-            case c8: // Black queenside castle
-                popBit(board.bitboards[r], a8);
-                setBit(board.bitboards[r], d8);
+            case c8:
+                popBit(board->bitboards[r], a8);
+                setBit(board->bitboards[r], d8);
                 break;
         }
     }
 
-    board.castlingRights &= castlingUpdate[source]; // Update castling rights
-    board.castlingRights &= castlingUpdate[target]; // Update castling rights
+    board->castlingRights &= castlingUpdate[source];
+    board->castlingRights &= castlingUpdate[target];
 
-    memset(board.occupancies, 0ULL, sizeof(board.occupancies));
-    board.occupancies[white] = board.bitboards[P] | board.bitboards[N] | board.bitboards[B] | board.bitboards[R] | board.bitboards[Q] | board.bitboards[K];
-    board.occupancies[black] = board.bitboards[p] | board.bitboards[n] | board.bitboards[b] | board.bitboards[r] | board.bitboards[q] | board.bitboards[k];
-    board.occupancies[both] = board.occupancies[white] | board.occupancies[black];
-    board.occupancies[3] = ~board.occupancies[both]; // Empty squares
-    board.sideToMove ^= 1;
+    memset(board->occupancies, 0ULL, sizeof(board->occupancies));
+    board->occupancies[white] = board->bitboards[P] | board->bitboards[N] | board->bitboards[B] | board->bitboards[R] | board->bitboards[Q] | board->bitboards[K];
+    board->occupancies[black] = board->bitboards[p] | board->bitboards[n] | board->bitboards[b] | board->bitboards[r] | board->bitboards[q] | board->bitboards[k];
+    board->occupancies[both] = board->occupancies[white] | board->occupancies[black];
+    board->occupancies[3] = ~board->occupancies[both]; // Empty squares
 
-    // Check if the move puts the king in check
-    if (isSquareAttacked(&board, (board.sideToMove == white) ? getLSBindex(board.bitboards[k]) : getLSBindex(board.bitboards[K]), board.sideToMove)) {
-        takeBack(board, backup); // Restore the board state if the move is illegal
+    board->sideToMove ^= 1;
+
+    int kingSquare = (board->sideToMove == white)
+        ? getLSBindex(board->bitboards[k])
+        : getLSBindex(board->bitboards[K]);
+
+    if (isSquareAttacked(board, kingSquare, board->sideToMove)) {
+        takeBack(board, backup); // Restore the board
         return 0; // Illegal move
     }
-    // If the move is legal, return 1
+
     return 1;
-}   
+}
+
 
 #endif // MOVES_H;

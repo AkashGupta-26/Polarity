@@ -2,30 +2,18 @@
 #include "board.h"
 #include "precalculated_move_tables.h"
 #include "moves.h"
+#include "perft.h"
 
 using namespace std;
 
 int main(){
     initializeMoveTables();
     Board board;
-    parseFEN(board, "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBqPPP/R3K2R w KQkq - 0 1");
+    parseFEN(board, "rnbq1k1r/pp1Pbppp/2p5/8/2B5/8/PPP1NnPP/RNBQK2R w KQ - 1 8  ");
     printBoard(board);
-
-    // copyBoard(board);
-    // parseFEN(board, start_position);
-    // printBoard(board);
-    // takeBack(board, backup)
-    // printBoard(board);
-
-    MoveList moves[1];
-    generateMoves(&board, moves);
-    copyBoard(board);
-    for (int i = 0; i < moves->count; ++i) {
-        printMove(moves->moves[i]);
-        cout << endl;
-        if (!makeMove(board, moves->moves[i])) continue;;
-        printBoard(board);
-        takeBack(board, backup);
+    for (int depth = 1; depth <= 6; ++depth) {
+        cout << "Perft at depth " << depth << ":" << endl;
+        perftTest(board, depth);
         cout << endl;
     }
 }

@@ -90,7 +90,6 @@ static inline void addMove(MoveList *list, int move) {
 static inline void generateMoves(Board *board, MoveList *moves) {
     moves->count = 0;
     
-    int move;
     int source, target;
     U64 bitboard, attacks;
 

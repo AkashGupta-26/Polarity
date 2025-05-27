@@ -341,6 +341,36 @@ static inline void generateMoves(Board *board, MoveList *moves) {
     }
 }
 
+std::string moveToUCI(int move) {
+    int source = decodeSource(move);
+    int target = decodeTarget(move);
+    int promoted = decodePromoted(move);
+
+    std::string result;
+    result += 'a' + (source % 8);
+    result += '1' + (source / 8);
+    result += 'a' + (target % 8);
+    result += '1' + (target / 8);
+
+    if (promoted) {
+        char promoChar = 'q'; // default
+        switch (promoted) {
+            case N:
+            case n: promoChar = 'n'; break;
+            case B:
+            case b: promoChar = 'b'; break;
+            case R:
+            case r: promoChar = 'r'; break;
+            case Q:
+            case q: promoChar = 'q'; break;
+        }
+        result += promoChar;
+    }
+
+    return result;
+}
+
+
 void printMove(int move){
     int source = decodeSource(move);
     int target = decodeTarget(move);

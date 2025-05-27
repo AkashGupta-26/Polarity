@@ -1,72 +1,12 @@
-#include "constants.h"
-#include "board.h"
-#include "precalculated_move_tables.h"
-#include "moves.h"
-#include "perft.h"
-#include "evaluate.h"
-//#include "search.h"
+// #include "constants.h"
+// #include "board.h"
+// #include "precalculated_move_tables.h"
+// #include "moves.h"
+// #include "perft.h"
+// #include "evaluate.h"
+#include "search.h"
 
 using namespace std;
-
-int ply = 0; // half-move counter
-int searchedNodes = 0; // total nodes searched
-int bestMove = 0;
-
-static inline int negamax(Board *board, int alpha, int beta, int depth){
-    if (depth == 0) {
-        searchedNodes++;
-        return evaluate(board);
-    }
-    //searchedNodes++;
-
-    int bestSoFar; 
-
-    // old alpha 
-    int oldAlpha = alpha;
-
-    MoveList moveList;
-    generateMoves(board, &moveList);
-
-    for (int count = 0; count < moveList.count; ++count) {
-        copyBoard(board); // Backup the current board state
-        ply++;
-        if (makeMove(board, moveList.moves[count]) == 0){
-            ply--;
-            takeBack(board, backup); // Restore the board state
-            continue; // Skip illegal moves
-        }
-        int score = -negamax(board, -beta, -alpha, depth - 1);
-
-        ply--;
-        takeBack(board, backup); // Restore the board state
-        
-        // fail-hard beta cutoff
-        if (score >= beta) {
-            return beta; // Beta cutoff fails high
-        }
-
-        if (score > alpha) {
-            // PV node
-            alpha = score;
-            if (ply == 0){
-                bestSoFar = moveList.moves[count]; // Store the best move at root
-            }
-        }
-    }
-    if (alpha != oldAlpha){
-        bestMove = bestSoFar;
-    }
-    // node fails low
-    return alpha; // Return the best score found
-}
-
-void searchPosition(Board *board, int depth) {
-    int score = negamax(board, -50000, 50000, depth);
-    std::cout << "BestMove: ";
-    printMove(bestMove);
-    std::cout << " Score: " << score << std::endl;
-    std::cout << "Searched Nodes: " << searchedNodes << std::endl;
-}
 
 int parseMove(Board *board, const string &moveStr) {
     // Convert UCI move string like "e2e4", "e7e8q" into move integer
@@ -143,6 +83,9 @@ void parseGo(Board *board, const string &input) {
 }
 
 void uci(Board *board) {
+    cout << "id name Polarity" << endl;
+    cout << "id author Magnet" << endl;
+    cout << "uciok" << endl;
     string input;
     while (getline(cin, input)) {
         if (input.empty()) continue; // Skip empty lines
@@ -154,15 +97,15 @@ void uci(Board *board) {
             cout << "readyok" << endl;
         } else if (input == "quit") {
             break;
-        } else if (input.rfind("go ", 0) == 0) {
+        } else if (input.rfind("go", 0) == 0) {
             parseGo(board, input);
-        } else if (input.rfind("position ", 0) == 0) {
+        } else if (input.rfind("position", 0) == 0) {
             parsePosition(board, input);
         } else if (input == "d") {
             printBoard(board);
         } else if (input.rfind("perft", 0) == 0) {
             int depth = 6;
-            size_t pos = input.find("depth ");
+            size_t pos = input.find("depth");
             if (pos != string::npos) {
                 depth = stoi(input.substr(pos + 6));
             }
@@ -177,13 +120,9 @@ void uci(Board *board) {
 
 
 int main(){
-    cout << "Welcome to Polarity Chess Engine!" << endl;
+    //cout << "Welcome to Polarity Chess Engine!" << endl;
     initializeMoveTables();
     Board board;
-    parseFEN(&board, "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
-    printBoard(&board);
-    
-    searchPosition(&board, 6); // Example search depth
-
+    uci(&board);
     return 0;
 }

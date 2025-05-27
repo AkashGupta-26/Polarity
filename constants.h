@@ -70,8 +70,8 @@ const std::unordered_map<char, int> pieceMap = {
 };
 
 const std::unordered_map<int, char> promotedPieceMap = {
-    {0, ' '}, {N, 'n'}, {B, 'b'}, {R, 'r'}, {Q, 'q'}, 
-    {none, ' '}, {n, 'n'}, {b, 'b'}, {r, 'r'}, {q, 'q'},
+    {0, '\0'}, {N, 'n'}, {B, 'b'}, {R, 'r'}, {Q, 'q'}, 
+    {none, '\0'}, {n, 'n'}, {b, 'b'}, {r, 'r'}, {q, 'q'},
 };
 
 

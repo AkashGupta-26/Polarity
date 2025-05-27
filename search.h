@@ -26,7 +26,6 @@ static inline int negamax(Board *board, int alpha, int beta, int depth){
         ply++;
         if (makeMove(board, moveList.moves[count]) == 0){
             ply--;
-            takeBack(board, backup); // Restore the board state
             continue; // Skip illegal moves
         }
         int score = -negamax(board, -beta, -alpha, depth - 1);
@@ -56,10 +55,8 @@ static inline int negamax(Board *board, int alpha, int beta, int depth){
 
 void searchPosition(Board *board, int depth) {
     int score = negamax(board, -50000, 50000, depth);
-    std::cout << "BestMove: ";
-    printMove(bestMove);
-    std::cout << " Score: " << score << std::endl;
-    std::cout << "Searched Nodes: " << searchedNodes << std::endl;
+    std::cout << "bestmove " << moveToUCI(bestMove) << std::endl;
+    //std::cout << "info depth " << depth << " score " << score << " nodes " << searchedNodes << std::endl;
 }
 
 #endif // EVALUATE_H;

@@ -124,7 +124,8 @@ int main(){
     initializeMoveTables();
     Board board;
     //MoveList list;
-    uci(&board);
-    // parseFEN(&board, tricky_position);
-    // searchPosition(&board, 6);
+    //uci(&board);
+    parseFEN(&board, tricky_position);
+    printBoard(&board);
+    searchPosition(&board, 6);
 }

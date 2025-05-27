@@ -123,6 +123,8 @@ int main(){
     //cout << "Welcome to Polarity Chess Engine!" << endl;
     initializeMoveTables();
     Board board;
+    //MoveList list;
     uci(&board);
-    return 0;
+    // parseFEN(&board, tricky_position);
+    // searchPosition(&board, 6);
 }

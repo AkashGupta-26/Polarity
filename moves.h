@@ -372,14 +372,7 @@ std::string moveToUCI(int move) {
 
 
 void printMove(int move){
-    int source = decodeSource(move);
-    int target = decodeTarget(move);
-    int promotedPiece = decodePromoted(move);
-    //std:: cout << "Promoted Piece " << promotedPiece << std::endl;
-
-    std::cout << indexToSquare[source]
-              << indexToSquare[target]
-              << promotedPieceMap.at(promotedPiece);
+    std::cout << "Move: " << moveToUCI(move) << std::endl;
 }
 
 void printMoveList(const MoveList *list) {

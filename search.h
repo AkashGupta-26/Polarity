@@ -161,9 +161,12 @@ static inline int quiescienceSearch(Board *board, int alpha, int beta) {
     return alpha;
 }
 
+const int FullDepthMoves = 4;
+const int ReductionLimit = 3;
+
 static inline int negamax(Board *board, int alpha, int beta, int depth){
 
-    int foundPV = 0;
+    //int foundPV = 0;
     pvLength[ply] = ply;
 
     if (depth == 0) {
@@ -174,7 +177,7 @@ static inline int negamax(Board *board, int alpha, int beta, int depth){
         return evaluate(board); // Return evaluation if maximum ply is reached
     }
 
-    searchedNodes++;
+       searchedNodes++;
     
     // checks if the king of the side to move is in check
     int inCheck = isSquareAttacked(board, getLSBindex(board->bitboards[(board->sideToMove == white) ? K : k]), board->sideToMove ^ 1);
@@ -185,6 +188,7 @@ static inline int negamax(Board *board, int alpha, int beta, int depth){
     }
     
     int legalMoves = 0;
+    int movesSearched = 0;
 
     MoveList moveList;
     generateMoves(board, &moveList);
@@ -203,15 +207,29 @@ static inline int negamax(Board *board, int alpha, int beta, int depth){
         legalMoves++;
         int score;
         
-        if (foundPV){
-            score = -negamax(board, -alpha - 1, -alpha, depth - 1);
-            if (score > alpha && score < beta) {
-                score = -negamax(board, -beta, -alpha, depth - 1); // Re-search with a full window
+        if (movesSearched == 0) {
+            score = -negamax(board, -beta, -alpha, depth - 1);
+        }
+        else{
+            if(movesSearched >= FullDepthMoves && depth >= ReductionLimit && 
+                !inCheck && !decodeCapture(moveList.moves[count]) && !decodePromoted(moveList.moves[count]))
+                    score = -negamax(board, -alpha - 1, -alpha, depth - 2);
+            
+            // hack to ensure that full-depth search is done
+            else score = alpha + 1;
+            
+            // if found a better move during LMR
+            if(score > alpha)
+            {
+                // re-search at full depth but with narrowed score bandwith
+                score = -negamax(board, -alpha - 1, -alpha, depth-1);
+            
+                // if LMR fails re-search at full depth and full score bandwith
+                if((score > alpha) && (score < beta))
+                    score = -negamax(board, -beta, -alpha, depth-1);
             }
         }
-        else
-            score = -negamax(board, -beta, -alpha, depth - 1);
-
+        movesSearched++; //comment this line to disable Late Move Reduction (LMR)
         ply--;
         takeBack(board, backup); // Restore the board state
         
@@ -230,7 +248,8 @@ static inline int negamax(Board *board, int alpha, int beta, int depth){
                 historyMoves[decodePiece(moveList.moves[count])][decodeTarget(moveList.moves[count])] += depth; // Update history move
             }
             alpha = score;
-            foundPV = 1;
+            //foundPV = 1; the entire found PV logic is redundant after implementing the LMR
+
             pvTable[ply][ply] = moveList.moves[count]; // Store the best move in the principal variation table
             
             for (int nextPly = ply + 1; nextPly < pvLength[ply + 1]; nextPly++) {
@@ -277,7 +296,7 @@ void searchPosition(Board *board, int depth) {
         followPV = 1;
         int score = negamax(board, -50000, 50000, curDepth);
         
-        std::cout << "info score cp " << score << " depth " << curDepth
+        std::cout << "info score cp " << score * ((board->sideToMove == white)? 1 : -1)  << " depth " << curDepth
             << " nodes " << searchedNodes << " pv ";
 
         for (int i = 0; i <= pvLength[0]; i++) {

@@ -7,6 +7,9 @@
 #include "moves.h"
 #include "perft.h"
 
+#define isBoardInCheck(board) \
+    isSquareAttacked(board, getLSBindex(board->bitboards[(board->sideToMove == white) ? K : k]), board->sideToMove ^ 1)
+
 const int mirrorSquare[] = {
     a8, b8, c8, d8, e8, f8, g8, h8,
     a7, b7, c7, d7, e7, f7, g7, h7,

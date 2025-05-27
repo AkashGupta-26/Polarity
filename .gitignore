@@ -54,5 +54,6 @@ dkms.conf
 
 # Random files and directories
 .vscode/
-
 PGNs/
+
+searchNew.h

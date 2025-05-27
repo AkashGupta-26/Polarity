@@ -123,7 +123,7 @@ int main(){
     //cout << "Welcome to Polarity Chess Engine!" << endl;
     initializeMoveTables();
     Board board;
-    int uciMode = 1;
+    int uciMode = 0;
     //MoveList list;
     if (uciMode) {
         uci(&board);

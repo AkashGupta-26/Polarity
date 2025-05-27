@@ -287,6 +287,9 @@ void searchPosition(Board *board, int depth) {
     searchedNodes = 0;
     followPrincipalVariation = 0;
     scorePrincipalVariation = 0;
+
+    int alpha = -50000;
+    int beta = 50000;
     
     memset(PrincipalVariationLength, 0, sizeof(PrincipalVariationLength)); 
     memset(PrincipalVariationTable, 0, sizeof(PrincipalVariationTable)); 
@@ -295,9 +298,20 @@ void searchPosition(Board *board, int depth) {
 
     for (int curDepth = 1; curDepth <= depth; curDepth++){
         followPrincipalVariation = 1;
-        int score = negamax(board, -50000, 50000, curDepth);
-        
-        std::cout << "info score cp " << score * ((board->sideToMove == white)? 1 : -1)  << " depth " << curDepth
+
+        int score = negamax(board, alpha, beta, curDepth);
+
+        if ((score <= alpha) || (score >= beta)) {
+            alpha = -50000; // Reset alpha if score is out of bounds
+            beta = 50000; // Reset beta if score is out of bounds
+            curDepth--; // reset depth to re-search with a wider score bandwith
+            continue;
+        }
+        // aspiration window
+        alpha = score - 50;
+        beta = score + 50; // Narrow the search window for the next iteration
+
+        std::cout << "info score cp " << score * ((board->sideToMove == white)? 1 : 1)  << " depth " << curDepth
             << " nodes " << searchedNodes << " pv ";
 
         for (int i = 0; i <= PrincipalVariationLength[0]; i++) {

@@ -132,5 +132,5 @@ int main(){
     // uci(&board);
     parseFEN(&board, tricky_position);
     printBoard(&board);
-    searchPosition(&board, 7);
+    searchPosition(&board, 9);
 }

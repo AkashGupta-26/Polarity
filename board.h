@@ -2,6 +2,7 @@
 #define BOARD_H
 
 #include "constants.h"
+#include "random.h"
 #include <sstream>
 #include <cstring>
 
@@ -35,7 +36,58 @@ struct Board{
     int sideToMove;
     int castlingRights; // Bitmask for castling rights
     int enPassantSquare; // Square for en passant capture
+    U64 zobristHash; // Zobrist hash for the board state
 };
+
+
+// Zobrist Hashing Constants
+U64 pieceZobristKeys[12][64];
+U64 enpassantZobristKeys[65];
+U64 castlingZobristKeys[16];
+U64 sideZobristKey;
+
+void initializeRandomKeys() {
+    randomState = 1804289383; // reset random state
+    for (int piece = P; piece <= k; ++piece){
+        for (int square = 0; square < 64; ++square) {
+            pieceZobristKeys[piece][square] = generateRandomU64();
+        }
+    }
+
+    for (int square = 0; square < 64; ++square) {
+        enpassantZobristKeys[square] = generateRandomU64();
+    }
+
+    enpassantZobristKeys[noSquare] = 0ULL; // No en passant square
+
+    sideZobristKey = generateRandomU64();
+
+    for (int i = 0; i < 16; ++i) {
+        castlingZobristKeys[i] = generateRandomU64();
+    }
+}
+
+U64 computeZobristHash(const Board *board) {
+    U64 hash = 0ULL;
+    U64 bitboard;
+    for (int piece = P; piece <= k; piece++){
+        bitboard = board->bitboards[piece];
+        while (bitboard) {
+            int square = getLSBindex(bitboard);
+            hash ^= pieceZobristKeys[piece][square];
+            popBit(bitboard, square);
+        }
+    }
+
+    hash ^= enpassantZobristKeys[board->enPassantSquare];
+    
+    hash ^= castlingZobristKeys[board->castlingRights];
+
+    if (board->sideToMove == black) 
+        hash ^= sideZobristKey;
+
+    return hash;
+}
 
 void clearBoard(Board* board) {
     memset(board->bitboards, 0, sizeof(board->bitboards));
@@ -44,6 +96,7 @@ void clearBoard(Board* board) {
     board->sideToMove = white; // Default to white
     board->castlingRights = 0; // No castling rights
     board->enPassantSquare = noSquare; // No en passant square
+    board->zobristHash = 0ULL; // Reset Zobrist hash
 }
 
 void printBoard(Board* board) {
@@ -82,6 +135,11 @@ void printBoard(Board* board) {
         std::cout << indexToSquare[enPassantSquare];
     else
         std::cout << "None";
+
+    std::cout << std::endl;
+
+    std::cout << "Hash: 0x" << std::hex << computeZobristHash(board) << std::dec << std::endl;
+
     std::cout << std::endl << std::endl;
 }
 
@@ -134,6 +192,58 @@ void parseFEN(Board* board, const std::string& fen) {
     } else {
         board->enPassantSquare = noSquare;
     }
+
+    // Update the Zobrist hash
+    board -> zobristHash = computeZobristHash(board);
 }
 
-#endif
+// Hash Flags
+#define hashExact 0
+#define hashAlpha 1
+#define hashBeta 2
+
+#define TranspositionTableEntries 0x400000 // 4 million entries
+#define getTTIndex(key) ((key) % TranspositionTableEntries)
+
+#define noHashEntry 100000 // outside alpha-beta bounds
+
+typedef struct {
+    U64 key;
+    int depth;
+    int flag; // 0: exact, 1: alpha, 2: beta
+    int value;
+} HashEntry;
+
+// Transposition Table
+HashEntry TranspositionTable[TranspositionTableEntries];
+
+void clearTranspositionTable() {
+    for (int i = 0; i < TranspositionTableEntries; ++i) {
+        TranspositionTable[i].key = 0ULL;
+        TranspositionTable[i].depth = 0;
+        TranspositionTable[i].flag = 0;
+        TranspositionTable[i].value = 0;
+    }
+}
+
+static inline int readHashEntry(Board *board, int alpha, int beta, int depth){
+    HashEntry *entry = &TranspositionTable[getTTIndex(board->zobristHash)];
+
+    if (entry->key == board->zobristHash && entry->depth >= depth){
+        if (entry->flag == hashExact) return entry->value; // PV node
+        if (entry->flag == hashAlpha && entry->value <= alpha) return alpha; // fails low
+        if (entry->flag == hashBeta && entry->value >= beta) return beta; // fails high
+    }
+
+    return noHashEntry; // No valid entry found
+}
+
+static inline void writeHashEntry(Board *board, int value, int depth, int flag) {
+    HashEntry *entry = &TranspositionTable[getTTIndex(board->zobristHash)];
+    entry->key = board->zobristHash;
+    entry->depth = depth;
+    entry->flag = flag;
+    entry->value = value;
+}
+
+#endif // BOARD_H;

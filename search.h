@@ -129,6 +129,9 @@ static inline int quiescienceSearch(Board *board, int alpha, int beta) {
     // evaluate position
     searchedNodes++;
 
+    if (ply > maxPly - 1) 
+        return evaluate(board); // Return evaluation if maximum ply is reached
+
     int eval = evaluate(board);
 
     if (eval >= beta) 
@@ -153,20 +156,29 @@ static inline int quiescienceSearch(Board *board, int alpha, int beta) {
         ply--;
         takeBack(board, backup); // Restore the board state
         
-        // Fail-hard beta cutoff
-        if (score >= beta) 
-            return beta; // Beta cutoff fails high
-
-        if (score > alpha)
+        
+        if (score > alpha){
             alpha = score; // Update alpha for PV node
+            // Fail-hard beta cutoff
+            if (score >= beta) 
+                return beta; // Beta cutoff fails high
+        }
     }
 
     return alpha; // Return the best score found
 }
 
+// main negamax search function
 static inline int negamax(Board *board, int alpha, int beta, int depth){
 
+    int score;
+    int hashFlag = hashAlpha; // Default hash flag
+
     PrincipalVariationLength[ply] = ply;
+
+    if(ply && (score = readHashEntry(board, alpha, beta, depth)) != noHashEntry) {
+        return score;
+    }
 
     if (depth == 0) 
         return quiescienceSearch(board, alpha, beta); // Quiescence search at leaf nodes
@@ -186,13 +198,30 @@ static inline int negamax(Board *board, int alpha, int beta, int depth){
     int legalMoves = 0;
     int movesSearched = 0;
 
+    int OnlyPawnsOnBoard = 0; // Check if only pawns are on the board
+    for (int piece = P; piece <= k; piece++){
+        if (piece == p || piece == P || piece == K || piece == k) continue; // Skip pawns and kings
+        if (board->bitboards[piece] != 0) {
+            OnlyPawnsOnBoard = 0; // Found a non-pawn piece
+            break;
+        }
+        OnlyPawnsOnBoard = 1; // Only pawns are on the board
+    }
+
     // Null Move Pruning
-    if (depth >= 3 && !inCheck && ply) {
+    if (depth >= 3 && !inCheck && ply && !OnlyPawnsOnBoard) {
         copyBoard(board); 
-        board->sideToMove ^= 1; // Switch sides
-        board->enPassantSquare = noSquare; // Reset en passant square
+        ply++;
         
-        int score = -negamax(board, -beta, -beta + 1, depth - 1 - NullMoveReduction); 
+        board->zobristHash ^= enpassantZobristKeys[board->enPassantSquare]; // Reset en passant hash
+        board->enPassantSquare = noSquare; // Reset en passant square
+
+        board->zobristHash ^= sideZobristKey; // Update Zobrist hash for side change
+        board->sideToMove ^= 1; // Switch sides
+        
+        score = -negamax(board, -beta, -beta + 1, depth - 1 - NullMoveReduction); 
+        
+        ply--;
         takeBack(board, backup); // Restore the board state
 
         if (score >= beta) 
@@ -216,7 +245,6 @@ static inline int negamax(Board *board, int alpha, int beta, int depth){
 
         ply++;
         legalMoves++;
-        int score;
         
         if (movesSearched == 0) {
             score = -negamax(board, -beta, -alpha, depth - 1);
@@ -245,17 +273,11 @@ static inline int negamax(Board *board, int alpha, int beta, int depth){
         ply--;
         takeBack(board, backup); // Restore the board state
         
-        // fail-hard beta cutoff
-        if (score >= beta) {
-            if (!decodeCapture(moveList.moves[count])){
-                killerMoves[1][ply] = killerMoves[0][ply]; 
-                killerMoves[0][ply] = moveList.moves[count];
-            }
-            return beta; // Beta cutoff fails high
-        }
-        
         // PV node
         if (score > alpha) {
+
+            hashFlag = hashExact; // Exact match
+
             if (!decodeCapture(moveList.moves[count])){
                 historyMoves[decodePiece(moveList.moves[count])][decodeTarget(moveList.moves[count])] += depth; // Update history move
             }
@@ -267,6 +289,18 @@ static inline int negamax(Board *board, int alpha, int beta, int depth){
                 PrincipalVariationTable[ply][nextPly] = PrincipalVariationTable[ply + 1][nextPly]; // Extend the principal variation
             }
             PrincipalVariationLength[ply] = PrincipalVariationLength[ply + 1]; // Update the length of the principal variation
+
+            // fail-hard beta cutoff
+            if (score >= beta) {
+
+                writeHashEntry(board, beta, depth, hashBeta); // Store beta cutoff in transposition table
+
+                if (!decodeCapture(moveList.moves[count])){
+                    killerMoves[1][ply] = killerMoves[0][ply]; 
+                    killerMoves[0][ply] = moveList.moves[count];
+                }
+                return beta; // Beta cutoff fails high
+            }
         }
     }
 
@@ -277,6 +311,8 @@ static inline int negamax(Board *board, int alpha, int beta, int depth){
         else
             return 0; // Stalemate
     }
+
+    writeHashEntry(board, alpha, depth, hashFlag); // Store the best score in the transposition table
 
     // node fails low
     return alpha; // Return the best score found
@@ -295,6 +331,7 @@ void searchPosition(Board *board, int depth) {
     memset(PrincipalVariationTable, 0, sizeof(PrincipalVariationTable)); 
     memset(killerMoves, 0, sizeof(killerMoves));
     memset(historyMoves, 0, sizeof(historyMoves));
+    //clearTranspositionTable(); // Clear the transposition table before starting the search
 
     for (int curDepth = 1; curDepth <= depth; curDepth++){
         followPrincipalVariation = 1;

@@ -424,12 +424,16 @@ static inline int makeMove(Board *board, int move, int onlyCaptures = 0) {
     popBit(board->bitboards[piece], source);
     setBit(board->bitboards[piece], target);
 
+    board->zobristHash ^= pieceZobristKeys[piece][source];
+    board->zobristHash ^= pieceZobristKeys[piece][target];
+
     if (capture) {
         int startPiece = (board->sideToMove == white) ? p : P;
         int endPiece = (board->sideToMove == white) ? k : K;
         for (int bbPiece = startPiece; bbPiece <= endPiece; ++bbPiece) {
             if (getBit(board->bitboards[bbPiece], target)) {
                 popBit(board->bitboards[bbPiece], target);
+                board->zobristHash ^= pieceZobristKeys[bbPiece][target];
                 break;
             }
         }
@@ -438,15 +442,21 @@ static inline int makeMove(Board *board, int move, int onlyCaptures = 0) {
     if (promotedPiece) {
         popBit(board->bitboards[piece], target);
         setBit(board->bitboards[promotedPiece], target);
+        board->zobristHash ^= pieceZobristKeys[piece][target];
+        board->zobristHash ^= pieceZobristKeys[promotedPiece][target];
     }
 
     if (enPass) {
         popBit(board->bitboards[(board->sideToMove == white) ? p : P], target + (board->sideToMove == white ? -8 : 8));
+        board->zobristHash ^= pieceZobristKeys[(board->sideToMove == white) ? p : P][target + (board->sideToMove == white ? -8 : 8)];
     }
 
+    board->zobristHash ^= enpassantZobristKeys[board->enPassantSquare]; // I have defined ep zobrist keys to be of lenth 65
     board->enPassantSquare = noSquare;
+
     if (doublePush) {
         board->enPassantSquare = target + (board->sideToMove == white ? -8 : 8);
+        board->zobristHash ^= enpassantZobristKeys[board->enPassantSquare];
     }
 
     if (castling) {
@@ -454,24 +464,36 @@ static inline int makeMove(Board *board, int move, int onlyCaptures = 0) {
             case g1:
                 popBit(board->bitboards[R], h1);
                 setBit(board->bitboards[R], f1);
+                board->zobristHash ^= pieceZobristKeys[R][h1];
+                board->zobristHash ^= pieceZobristKeys[R][f1];
                 break;
             case c1:
                 popBit(board->bitboards[R], a1);
                 setBit(board->bitboards[R], d1);
+                board->zobristHash ^= pieceZobristKeys[R][a1];
+                board->zobristHash ^= pieceZobristKeys[R][d1];
                 break;
             case g8:
                 popBit(board->bitboards[r], h8);
                 setBit(board->bitboards[r], f8);
+                board->zobristHash ^= pieceZobristKeys[r][h8];
+                board->zobristHash ^= pieceZobristKeys[r][f8];
                 break;
             case c8:
                 popBit(board->bitboards[r], a8);
                 setBit(board->bitboards[r], d8);
+                board->zobristHash ^= pieceZobristKeys[r][a8];
+                board->zobristHash ^= pieceZobristKeys[r][d8];
                 break;
         }
     }
 
+    board->zobristHash ^= castlingZobristKeys[board->castlingRights];
+
     board->castlingRights &= castlingUpdate[source];
     board->castlingRights &= castlingUpdate[target];
+
+    board->zobristHash ^= castlingZobristKeys[board->castlingRights];
 
     memset(board->occupancies, 0ULL, sizeof(board->occupancies));
     board->occupancies[white] = board->bitboards[P] | board->bitboards[N] | board->bitboards[B] | board->bitboards[R] | board->bitboards[Q] | board->bitboards[K];
@@ -480,6 +502,7 @@ static inline int makeMove(Board *board, int move, int onlyCaptures = 0) {
     board->occupancies[3] = ~board->occupancies[both]; // Empty squares
 
     board->sideToMove ^= 1;
+    board->zobristHash ^= sideZobristKey;
 
     int kingSquare = (board->sideToMove == white)
         ? getLSBindex(board->bitboards[k])
@@ -489,7 +512,6 @@ static inline int makeMove(Board *board, int move, int onlyCaptures = 0) {
         takeBack(board, backup); // Restore the board
         return 0; // Illegal move
     }
-
     return 1;
 }
 

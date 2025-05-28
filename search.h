@@ -176,7 +176,9 @@ static inline int negamax(Board *board, int alpha, int beta, int depth){
 
     PrincipalVariationLength[ply] = ply;
 
-    if(ply && (score = readHashEntry(board, alpha, beta, depth)) != noHashEntry) {
+    int PVnode = (beta - alpha > 1); // Check if this is a PV node
+
+    if(!PVnode && ply && (score = readHashEntry(board, alpha, beta, depth, ply)) != noHashEntry) {
         return score;
     }
 
@@ -293,7 +295,7 @@ static inline int negamax(Board *board, int alpha, int beta, int depth){
             // fail-hard beta cutoff
             if (score >= beta) {
 
-                writeHashEntry(board, beta, depth, hashBeta); // Store beta cutoff in transposition table
+                writeHashEntry(board, beta, depth, hashBeta, ply); // Store beta cutoff in transposition table
 
                 if (!decodeCapture(moveList.moves[count])){
                     killerMoves[1][ply] = killerMoves[0][ply]; 
@@ -307,12 +309,12 @@ static inline int negamax(Board *board, int alpha, int beta, int depth){
     if (legalMoves == 0) {
         // If no legal moves, check for checkmate or stalemate
         if (inCheck)
-            return -49000 + ply; // Checkmate
+            alpha = -MATEVALUE + ply; // Checkmate
         else
-            return 0; // Stalemate
+            alpha = 0; // Stalemate
     }
 
-    writeHashEntry(board, alpha, depth, hashFlag); // Store the best score in the transposition table
+    writeHashEntry(board, alpha, depth, hashFlag, ply); // Store the best score in the transposition table
 
     // node fails low
     return alpha; // Return the best score found
@@ -324,8 +326,8 @@ void searchPosition(Board *board, int depth) {
     followPrincipalVariation = 0;
     scorePrincipalVariation = 0;
 
-    int alpha = -50000;
-    int beta = 50000;
+    int alpha = -INFINITY;
+    int beta = INFINITY;
     
     memset(PrincipalVariationLength, 0, sizeof(PrincipalVariationLength)); 
     memset(PrincipalVariationTable, 0, sizeof(PrincipalVariationTable)); 
@@ -339,8 +341,8 @@ void searchPosition(Board *board, int depth) {
         int score = negamax(board, alpha, beta, curDepth);
 
         if ((score <= alpha) || (score >= beta)) {
-            alpha = -50000; // Reset alpha if score is out of bounds
-            beta = 50000; // Reset beta if score is out of bounds
+            alpha = -INFINITY; // Reset alpha if score is out of bounds
+            beta = INFINITY; // Reset beta if score is out of bounds
             curDepth--; // reset depth to re-search with a wider score bandwith
             continue;
         }
@@ -348,8 +350,13 @@ void searchPosition(Board *board, int depth) {
         alpha = score - 50;
         beta = score + 50; // Narrow the search window for the next iteration
 
-        std::cout << "info score cp " << score * ((board->sideToMove == white)? 1 : 1)  << " depth " << curDepth
-            << " nodes " << searchedNodes << " pv ";
+        if (score > 10000 || score < -10000) {
+            std::cout << "info score mate " << (score > 0 ? (MATEVALUE - score)/2 + 1 : -(MATEVALUE + score)/2 - 1) 
+                << " depth " << curDepth << " nodes " << searchedNodes << std::endl;
+        }
+        else
+            std::cout << "info score cp " << score << " depth " << curDepth
+                << " nodes " << searchedNodes << " pv ";
 
         for (int i = 0; i <= PrincipalVariationLength[0]; i++) {
             if (PrincipalVariationTable[0][i] == 0) break; // Stop at the end of the principal variation

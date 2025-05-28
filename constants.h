@@ -134,4 +134,9 @@ void printBitboard(U64 bitboard) {
 // Time in microseconds
 #define TIME_IN_MICROSECONDS std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now().time_since_epoch()).count()
 
+
+#define INFINITY 50000 // Arbitrary large value for alpha-beta pruning
+#define MATEVALUE 49000 // Value for checkmate
+#define MATESCORE 48000 // Lower bound for mate score
+
 #endif // CONSTANTS_H;

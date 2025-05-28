@@ -226,20 +226,29 @@ void clearTranspositionTable() {
     }
 }
 
-static inline int readHashEntry(Board *board, int alpha, int beta, int depth){
+static inline int readHashEntry(Board *board, int alpha, int beta, int depth, int ply = 0) {
     HashEntry *entry = &TranspositionTable[getTTIndex(board->zobristHash)];
 
     if (entry->key == board->zobristHash && entry->depth >= depth){
-        if (entry->flag == hashExact) return entry->value; // PV node
-        if (entry->flag == hashAlpha && entry->value <= alpha) return alpha; // fails low
-        if (entry->flag == hashBeta && entry->value >= beta) return beta; // fails high
+        int value = entry->value;
+
+        if (value < -MATESCORE) value += ply; // Adjust for mate scores
+        if (value > MATESCORE) value -= ply; // Adjust for mate scores
+
+        if (entry->flag == hashExact) return value; // PV node
+        if (entry->flag == hashAlpha && value <= alpha) return alpha; // fails low
+        if (entry->flag == hashBeta && value >= beta) return beta; // fails high
     }
 
     return noHashEntry; // No valid entry found
 }
 
-static inline void writeHashEntry(Board *board, int value, int depth, int flag) {
+static inline void writeHashEntry(Board *board, int value, int depth, int flag, int ply = 0) {
     HashEntry *entry = &TranspositionTable[getTTIndex(board->zobristHash)];
+
+    if (value < -MATESCORE) value -= ply;
+    if (value > MATESCORE) value += ply;
+
     entry->key = board->zobristHash;
     entry->depth = depth;
     entry->flag = flag;

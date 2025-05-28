@@ -100,6 +100,7 @@ void uci(Board *board) {
         } else if (input.rfind("go", 0) == 0) {
             parseGo(board, input);
         } else if (input.rfind("position", 0) == 0) {
+            //clearTranspositionTable();
             parsePosition(board, input);
         } else if (input == "d") {
             printBoard(board);
@@ -112,6 +113,7 @@ void uci(Board *board) {
             perftTest(board, depth, 1);
         } else if (input == "ucinewgame") {
             parsePosition(board, "position startpos");
+            clearTranspositionTable();
         } else {
             cout << "Unknown command: " << input << endl;
         }
@@ -134,7 +136,7 @@ int main(){
         uci(&board);
         return 0; // Exit after UCI initialization
     }
-    parseFEN(&board, start_position);
+    parseFEN(&board, cmk_position);
     printBoard(&board);
     searchPosition(&board, 10);
 

@@ -92,6 +92,86 @@ static inline void generateMoves(Board *board, MoveList *moves) {
     
     int source, target;
     U64 bitboard, attacks;
+    
+    // Knight Moves
+    bitboard = board->bitboards[(board->sideToMove == white) ? N : n];
+    while (bitboard) {
+        source = getLSBindex(bitboard);
+        attacks = knightAttacks[source] & ((board->sideToMove == white) ? ~board->occupancies[white] : ~board->occupancies[black]);
+        while (attacks) {
+            target = getLSBindex(attacks);
+            //quiet move
+            if (!getBit((board->sideToMove == white)?board->occupancies[black]:board->occupancies[white], target)) {
+                addMove(moves, encodeMove(source, target, (board->sideToMove == white) ? N : n, 0, 0, 0, 0, 0));
+            }
+            //capture move
+            else {
+                addMove(moves, encodeMove(source, target, (board->sideToMove == white) ? N : n, 0, 1, 0, 0, 0));
+            }
+            popBit(attacks, target); // Clear the least significant bit
+        }
+        popBit(bitboard, source); // Clear the least significant bit
+    }
+
+    // Bishop Moves
+    bitboard = board->bitboards[(board->sideToMove == white) ? B : b];
+    while (bitboard) {
+        source = getLSBindex(bitboard);
+        attacks = getBishopAttacks(source, board->occupancies[both]) & ((board->sideToMove == white) ? ~board->occupancies[white] : ~board->occupancies[black]);
+        while (attacks) {
+            target = getLSBindex(attacks);
+            //quiet move
+            if (!getBit((board->sideToMove == white)?board->occupancies[black]:board->occupancies[white], target)) {
+                addMove(moves, encodeMove(source, target, (board->sideToMove == white) ? B : b, 0, 0, 0, 0, 0));
+            }
+            //capture move
+            else {
+                addMove(moves, encodeMove(source, target, (board->sideToMove == white) ? B : b, 0, 1, 0, 0, 0));
+            }
+            popBit(attacks, target); // Clear the least significant bit
+        }
+        popBit(bitboard, source); // Clear the least significant bit
+    }
+
+    // Rook Moves
+    bitboard = board->bitboards[(board->sideToMove == white) ? R : r];
+    while (bitboard) {
+        source = getLSBindex(bitboard);
+        attacks = getRookAttacks(source, board->occupancies[both]) & ((board->sideToMove == white) ? ~board->occupancies[white] : ~board->occupancies[black]);
+        while (attacks) {
+            target = getLSBindex(attacks);
+            //quiet move
+            if (!getBit((board->sideToMove == white)?board->occupancies[black]:board->occupancies[white], target)) {
+                addMove(moves, encodeMove(source, target, (board->sideToMove == white) ? R : r, 0, 0, 0, 0, 0));
+            }
+            //capture move
+            else {
+                addMove(moves, encodeMove(source, target, (board->sideToMove == white) ? R : r, 0, 1, 0, 0, 0));
+            }
+            popBit(attacks, target); // Clear the least significant bit
+        }
+        popBit(bitboard, source); // Clear the least significant bit
+    }
+
+    // Queen Moves
+    bitboard = board->bitboards[(board->sideToMove == white) ? Q : q];
+    while (bitboard) {
+        source = getLSBindex(bitboard);
+        attacks = getQueenAttacks(source, board->occupancies[both]) & ((board->sideToMove == white) ? ~board->occupancies[white] : ~board->occupancies[black]);
+        while (attacks) {
+            target = getLSBindex(attacks);
+            //quiet move
+            if (!getBit((board->sideToMove == white)?board->occupancies[black]:board->occupancies[white], target)) {
+                addMove(moves, encodeMove(source, target, (board->sideToMove == white) ? Q : q, 0, 0, 0, 0, 0));
+            }
+            //capture move
+            else {
+                addMove(moves, encodeMove(source, target, (board->sideToMove == white) ? Q : q, 0, 1, 0, 0, 0));
+            }
+            popBit(attacks, target); // Clear the least significant bit
+        }
+        popBit(bitboard, source); // Clear the least significant bit
+    }
 
     // Pawn moves
     if (board -> sideToMove == white){
@@ -206,26 +286,6 @@ static inline void generateMoves(Board *board, MoveList *moves) {
         }
     }
 
-    // Normal King Moves
-    bitboard = board->bitboards[board->sideToMove == white ? K : k];
-    while (bitboard){
-        source = getLSBindex(bitboard);
-        attacks = kingAttacks[source] & ((board->sideToMove == white) ? ~board->occupancies[white] : ~board->occupancies[black]);
-        while (attacks) {
-            target = getLSBindex(attacks);
-            //quiet move
-            if (!getBit((board->sideToMove == white)?board->occupancies[black]:board->occupancies[white], target)) {
-                addMove(moves, encodeMove(source, target, (board->sideToMove == white) ? K : k, 0, 0, 0, 0, 0));
-            }
-            //capture move
-            else {
-                addMove(moves, encodeMove(source, target, (board->sideToMove == white) ? K : k, 0, 1, 0, 0, 0));
-            }
-            popBit(attacks, target); // Clear the least significant bit
-        }
-        popBit(bitboard, source); // Clear the least significant bit
-    }
-
     // Castle Moves
     if (board->sideToMove == white){
         if (board->castlingRights & wk){
@@ -259,81 +319,21 @@ static inline void generateMoves(Board *board, MoveList *moves) {
             }
         }
     }
-    
-    // Knight Moves
-    bitboard = board->bitboards[(board->sideToMove == white) ? N : n];
-    while (bitboard) {
-        source = getLSBindex(bitboard);
-        attacks = knightAttacks[source] & ((board->sideToMove == white) ? ~board->occupancies[white] : ~board->occupancies[black]);
-        while (attacks) {
-            target = getLSBindex(attacks);
-            //quiet move
-            if (!getBit((board->sideToMove == white)?board->occupancies[black]:board->occupancies[white], target)) {
-                addMove(moves, encodeMove(source, target, (board->sideToMove == white) ? N : n, 0, 0, 0, 0, 0));
-            }
-            //capture move
-            else {
-                addMove(moves, encodeMove(source, target, (board->sideToMove == white) ? N : n, 0, 1, 0, 0, 0));
-            }
-            popBit(attacks, target); // Clear the least significant bit
-        }
-        popBit(bitboard, source); // Clear the least significant bit
-    }
 
-    // Bishop Moves
-    bitboard = board->bitboards[(board->sideToMove == white) ? B : b];
-    while (bitboard) {
+    // Normal King Moves
+    bitboard = board->bitboards[board->sideToMove == white ? K : k];
+    while (bitboard){
         source = getLSBindex(bitboard);
-        attacks = getBishopAttacks(source, board->occupancies[both]) & ((board->sideToMove == white) ? ~board->occupancies[white] : ~board->occupancies[black]);
+        attacks = kingAttacks[source] & ((board->sideToMove == white) ? ~board->occupancies[white] : ~board->occupancies[black]);
         while (attacks) {
             target = getLSBindex(attacks);
             //quiet move
             if (!getBit((board->sideToMove == white)?board->occupancies[black]:board->occupancies[white], target)) {
-                addMove(moves, encodeMove(source, target, (board->sideToMove == white) ? B : b, 0, 0, 0, 0, 0));
+                addMove(moves, encodeMove(source, target, (board->sideToMove == white) ? K : k, 0, 0, 0, 0, 0));
             }
             //capture move
             else {
-                addMove(moves, encodeMove(source, target, (board->sideToMove == white) ? B : b, 0, 1, 0, 0, 0));
-            }
-            popBit(attacks, target); // Clear the least significant bit
-        }
-        popBit(bitboard, source); // Clear the least significant bit
-    }
-
-    // Rook Moves
-    bitboard = board->bitboards[(board->sideToMove == white) ? R : r];
-    while (bitboard) {
-        source = getLSBindex(bitboard);
-        attacks = getRookAttacks(source, board->occupancies[both]) & ((board->sideToMove == white) ? ~board->occupancies[white] : ~board->occupancies[black]);
-        while (attacks) {
-            target = getLSBindex(attacks);
-            //quiet move
-            if (!getBit((board->sideToMove == white)?board->occupancies[black]:board->occupancies[white], target)) {
-                addMove(moves, encodeMove(source, target, (board->sideToMove == white) ? R : r, 0, 0, 0, 0, 0));
-            }
-            //capture move
-            else {
-                addMove(moves, encodeMove(source, target, (board->sideToMove == white) ? R : r, 0, 1, 0, 0, 0));
-            }
-            popBit(attacks, target); // Clear the least significant bit
-        }
-        popBit(bitboard, source); // Clear the least significant bit
-    }
-
-    // Queen Moves
-    bitboard = board->bitboards[(board->sideToMove == white) ? Q : q];
-    while (bitboard) {
-        source = getLSBindex(bitboard);
-        attacks = getQueenAttacks(source, board->occupancies[both]) & ((board->sideToMove == white) ? ~board->occupancies[white] : ~board->occupancies[black]);
-        while (attacks) {
-            target = getLSBindex(attacks);
-            //quiet move
-            if (!getBit((board->sideToMove == white)?board->occupancies[black]:board->occupancies[white], target)) {
-                addMove(moves, encodeMove(source, target, (board->sideToMove == white) ? Q : q, 0, 0, 0, 0, 0));
-            }
-            //capture move
-            else {
-                addMove(moves, encodeMove(source, target, (board->sideToMove == white) ? Q : q, 0, 1, 0, 0, 0));
+                addMove(moves, encodeMove(source, target, (board->sideToMove == white) ? K : k, 0, 1, 0, 0, 0));
             }
             popBit(attacks, target); // Clear the least significant bit
         }

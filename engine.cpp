@@ -2,7 +2,7 @@
 // #include "board.h"
 // #include "precalculated_move_tables.h"
 // #include "moves.h"
-// #include "perft.h"
+#include "perft.h"
 // #include "evaluate.h"
 #include "search.h"
 
@@ -118,19 +118,27 @@ void uci(Board *board) {
     }
 }
 
+void initializeAll() {
+    initializeMoveTables();
+    initializeRandomKeys();
+    clearTranspositionTable();
+}
 
 int main(){
     //cout << "Welcome to Polarity Chess Engine!" << endl;
-    initializeMoveTables();
+    initializeAll();
     Board board;
-    int uciMode = 0;
+    int uciMode = 1;
     //MoveList list;
     if (uciMode) {
         uci(&board);
         return 0; // Exit after UCI initialization
     }
-    // uci(&board);
-    parseFEN(&board, tricky_position);
+    parseFEN(&board, start_position);
     printBoard(&board);
-    searchPosition(&board, 9);
+    searchPosition(&board, 10);
+
+    makeMove(&board, PrincipalVariationTable[0][0]); // Make the first move from the principal variation
+    searchPosition(&board, 10); // Search again after making the move
+
 }

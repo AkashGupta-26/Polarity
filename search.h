@@ -124,6 +124,15 @@ static inline void sortMoves(Board *board, MoveList *list) {
     }
 }
 
+static inline int detectRepetition(Board *board) {
+    for (int i = 0; i < repetitionIndex; ++i) {
+        if (repetitionTable[i] == board->zobristHash) {
+            return 1; // Repetition detected
+        }
+    }
+    return 0; // No repetition
+}
+
 // Quiescence search to handle captures
 static inline int quiescienceSearch(Board *board, int alpha, int beta) {
     // evaluate position
@@ -151,9 +160,11 @@ static inline int quiescienceSearch(Board *board, int alpha, int beta) {
             continue; // Skip illegal moves
         
         ply++;
+        repetitionTable[repetitionIndex++] = board->zobristHash; // Add current position to repetition table
         int score = -quiescienceSearch(board, -beta, -alpha);
 
         ply--;
+        repetitionIndex--; // Remove the position from the repetition table after searching
         takeBack(board, backup); // Restore the board state
         
         
@@ -175,6 +186,10 @@ static inline int negamax(Board *board, int alpha, int beta, int depth){
     int hashFlag = hashAlpha; // Default hash flag
 
     PrincipalVariationLength[ply] = ply;
+
+    if (ply && detectRepetition(board)) {
+        return 0; // Return 0 for repetition
+    }
 
     int PVnode = (beta - alpha > 1); // Check if this is a PV node
 
@@ -214,7 +229,8 @@ static inline int negamax(Board *board, int alpha, int beta, int depth){
     if (depth >= 3 && !inCheck && ply && !OnlyPawnsOnBoard) {
         copyBoard(board); 
         ply++;
-        
+        repetitionTable[repetitionIndex++] = board->zobristHash; // Add current position to repetition table
+
         board->zobristHash ^= enpassantZobristKeys[board->enPassantSquare]; // Reset en passant hash
         board->enPassantSquare = noSquare; // Reset en passant square
 
@@ -224,6 +240,7 @@ static inline int negamax(Board *board, int alpha, int beta, int depth){
         score = -negamax(board, -beta, -beta + 1, depth - 1 - NullMoveReduction); 
         
         ply--;
+        repetitionIndex--;
         takeBack(board, backup); // Restore the board state
 
         if (score >= beta) 
@@ -242,9 +259,11 @@ static inline int negamax(Board *board, int alpha, int beta, int depth){
     copyBoard(board); // Backup the current board state
 
     for (int count = 0; count < moveList.count; ++count) {
-        if (makeMove(board, moveList.moves[count]) == 0)
+        repetitionTable[repetitionIndex++] = board->zobristHash; // Add current position to repetition table
+        if (makeMove(board, moveList.moves[count]) == 0){
+            repetitionIndex--; // Remove the position from the repetition table if move is illegals
             continue; // Skip illegal moves
-
+        }
         ply++;
         legalMoves++;
         
@@ -273,6 +292,7 @@ static inline int negamax(Board *board, int alpha, int beta, int depth){
 
         movesSearched++; //comment this line to disable Late Move Reduction (LMR)
         ply--;
+        repetitionIndex--; // Remove the position from the repetition table after searching
         takeBack(board, backup); // Restore the board state
         
         // PV node

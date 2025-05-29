@@ -30,6 +30,9 @@
 #define takeBack(board, backup) \
     memcpy(board, &backup, sizeof(Board));
 
+U64 repetitionTable[1024];
+int repetitionIndex = 0;
+
 struct Board{
     U64 bitboards[12]; // 12 types of pieces (6 white, 6 black)
     U64 occupancies[4]; // 0: white, 1: black, 2: all, 3: empty
@@ -145,6 +148,7 @@ void printBoard(Board* board) {
 
 void parseFEN(Board* board, const std::string& fen) {
     clearBoard(board);
+    repetitionIndex = 0;
     std::istringstream iss(fen);
     std::string boardPart, side, castling, enPassant;
     iss >> boardPart >> side >> castling >> enPassant;
@@ -254,8 +258,5 @@ static inline void writeHashEntry(Board *board, int value, int depth, int flag, 
     entry->flag = flag;
     entry->value = value;
 }
-
-U64 repetitionTable[200];
-int repetitionIndex = 0;
 
 #endif // BOARD_H;

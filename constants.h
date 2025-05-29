@@ -1,11 +1,22 @@
 #ifndef CONSTANTS_H
 #define CONSTANTS_H
 
+#ifdef _WIN32
+    #include <windows.h>
+#else
+    #include <unistd.h>
+    #include <sys/time.h>
+    #include <sys/types.h>
+    #include <termios.h>
+    #include <fcntl.h>
+#endif
+
 #include <chrono>
 #include <string>
 #include <iostream>
 #include <unordered_map>
 #include <cstring>
+#include <unistd.h>
 
 // Data Types
 #define U64 unsigned long long
@@ -139,5 +150,55 @@ void printBitboard(U64 bitboard) {
 #define INFINITY 50000 // Arbitrary large value for alpha-beta pruning
 #define MATEVALUE 49000 // Value for checkmate
 #define MATESCORE 48000 // Lower bound for mate score
+
+#include <iostream>
+#include <chrono>
+#include <thread>
+
+#ifdef _WIN32
+    #include <windows.h>
+#else
+    #include <unistd.h>
+    #include <sys/time.h>
+    #include <sys/types.h>
+    #include <termios.h>
+    #include <fcntl.h>
+#endif
+
+int input_waiting() {
+#ifdef _WIN32
+    static bool initialized = false;
+    static HANDLE hStdin;
+    static bool isPipe;
+    DWORD dw;
+
+    if (!initialized) {
+        initialized = true;
+        hStdin = GetStdHandle(STD_INPUT_HANDLE);
+        isPipe = !GetConsoleMode(hStdin, &dw);
+        if (!isPipe) {
+            SetConsoleMode(hStdin, dw & ~(ENABLE_MOUSE_INPUT | ENABLE_WINDOW_INPUT));
+            FlushConsoleInputBuffer(hStdin);
+        }
+    }
+
+    if (isPipe) {
+        if (!PeekNamedPipe(hStdin, NULL, 0, NULL, &dw, NULL))
+            return 1; // Error or closed pipe
+        return dw != 0;
+    } else {
+        GetNumberOfConsoleInputEvents(hStdin, &dw);
+        return dw > 1; // The first is usually a dummy event
+    }
+#else
+    fd_set readfds;
+    struct timeval tv;
+    FD_ZERO(&readfds);
+    FD_SET(STDIN_FILENO, &readfds);
+    tv.tv_sec = 0;
+    tv.tv_usec = 0;
+    return select(STDIN_FILENO + 1, &readfds, NULL, NULL, &tv) > 0;
+#endif
+}
 
 #endif // CONSTANTS_H;

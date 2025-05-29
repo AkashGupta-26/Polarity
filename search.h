@@ -3,11 +3,67 @@
 
 #include "evaluate.h"
 #include <algorithm>
+#include <fstream>
+
+// extern std::ofstream logFile;
 
 struct ScoredMove {
     int move;
     int score;
 };
+
+struct SearchUCI {
+    int depth;
+    int timedGame;
+    long long startTime;
+    long long stopTime;
+    int increment;
+    int quit;
+    int stop;
+
+    SearchUCI() : depth(10), timedGame(0), startTime(0), stopTime(0), increment(0), quit(0), stop(0) {}
+};
+
+void read_input(SearchUCI *searchParams) 
+{
+    int bytes;
+    char input[256] = "";
+    char* endc;
+
+    if (input_waiting())
+    {
+        searchParams->stop = 1;
+
+        do {
+            bytes = read(fileno(stdin), input, sizeof(input));
+        } while (bytes < 0);
+
+        endc = strchr(input, '\n');
+        if (endc) *endc = '\0';
+
+        if (std::strlen(input) > 0)
+        {
+            if (std::strncmp(input, "quit", 4) == 0)
+            {
+                searchParams->quit = 1;
+            }
+            else if (std::strncmp(input, "stop", 4) == 0)
+            {
+                searchParams->quit = 1;
+            }
+        }
+    }
+}
+
+static void communicate(SearchUCI *searchParams) {
+    if (searchParams->timedGame && TIME_IN_MILLISECONDS >= searchParams->stopTime) {
+        searchParams->stop = 1; // Stop the search if time is up
+    }
+    read_input(searchParams);
+}
+
+// global initialization
+SearchUCI searchParams[1];
 
 // Least Valuable Aggressor Most Valuable Victim (MVV-LVA) table
 static int MvvLva[12][12] = {
@@ -49,6 +105,9 @@ int PrincipalVariationTable[maxPly][maxPly];
 
 // follow PV flags
 int followPrincipalVariation, scorePrincipalVariation;
+
+// debug repetition detection
+int foundRepetition = 0;
 
 // Allows Principal Variation to be evaluated first
 static inline void enablePrincipalVariationScoring(Board *board, MoveList *list) {
@@ -135,6 +194,10 @@ static inline int detectRepetition(Board *board) {
 
 // Quiescence search to handle captures
 static inline int quiescienceSearch(Board *board, int alpha, int beta) {
+
+    if ((searchedNodes & 2047) == 0) 
+        communicate(searchParams); // Communicate with the engine every 2048 nodes
+
     // evaluate position
     searchedNodes++;
 
@@ -167,6 +230,9 @@ static inline int quiescienceSearch(Board *board, int alpha, int beta) {
         repetitionIndex--; // Remove the position from the repetition table after searching
         takeBack(board, backup); // Restore the board state
         
+        if (searchParams->stop) {
+            return alpha;
+        }
         
         if (score > alpha){
             alpha = score; // Update alpha for PV node
@@ -180,167 +246,188 @@ static inline int quiescienceSearch(Board *board, int alpha, int beta) {
 }
 
 // main negamax search function
-static inline int negamax(Board *board, int alpha, int beta, int depth){
+static inline int negamax(Board *board, int alpha, int beta, int depth) {
 
+    if ((searchedNodes & 2047) == 0) 
+        communicate(searchParams); // Communicate with the engine every 2048 nodes
+
+    //static int currentLine[maxPly]; // Track the line of moves searched
     int score;
-    int hashFlag = hashAlpha; // Default hash flag
+    int hashFlag = hashAlpha;
 
     PrincipalVariationLength[ply] = ply;
 
     if (ply && detectRepetition(board)) {
-        return 0; // Return 0 for repetition
+
+        return 0;
     }
 
-    int PVnode = (beta - alpha > 1); // Check if this is a PV node
+    int PVnode = (beta - alpha > 1);
 
-    if(!PVnode && ply && (score = readHashEntry(board, alpha, beta, depth, ply)) != noHashEntry) {
+    if (!PVnode && ply && (score = readHashEntry(board, alpha, beta, depth, ply)) != noHashEntry) {
         return score;
     }
 
-    if (depth == 0) 
-        return quiescienceSearch(board, alpha, beta); // Quiescence search at leaf nodes
-    
-    if (ply > maxPly - 1) 
-        return evaluate(board); // Return evaluation if maximum ply is reached
-    
+    if (depth == 0)
+        return quiescienceSearch(board, alpha, beta);
+
+    if (ply > maxPly - 1)
+        return evaluate(board);
+
     searchedNodes++;
-    
-    // checks if the king of the side to move is in check
+
     int inCheck = isBoardInCheck(board);
-    
-    // increase search depth for checks;
-    if (inCheck)
-        depth++;
-    
+    if (inCheck) depth++;
+
     int legalMoves = 0;
     int movesSearched = 0;
 
-    int OnlyPawnsOnBoard = 0; // Check if only pawns are on the board
-    for (int piece = P; piece <= k; piece++){
-        if (piece == p || piece == P || piece == K || piece == k) continue; // Skip pawns and kings
+    int OnlyPawnsOnBoard = 1;
+    for (int piece = P; piece <= k; piece++) {
+        if (piece == p || piece == P || piece == K || piece == k) continue;
         if (board->bitboards[piece] != 0) {
-            OnlyPawnsOnBoard = 0; // Found a non-pawn piece
+            OnlyPawnsOnBoard = 0;
             break;
         }
-        OnlyPawnsOnBoard = 1; // Only pawns are on the board
     }
 
-    // Null Move Pruning
     if (depth >= 3 && !inCheck && ply && !OnlyPawnsOnBoard) {
-        copyBoard(board); 
+        copyBoard(board);
         ply++;
-        repetitionTable[repetitionIndex++] = board->zobristHash; // Add current position to repetition table
+        repetitionTable[repetitionIndex++] = board->zobristHash;
 
-        board->zobristHash ^= enpassantZobristKeys[board->enPassantSquare]; // Reset en passant hash
-        board->enPassantSquare = noSquare; // Reset en passant square
+        board->zobristHash ^= enpassantZobristKeys[board->enPassantSquare];
+        board->enPassantSquare = noSquare;
+        board->zobristHash ^= sideZobristKey;
+        board->sideToMove ^= 1;
 
-        board->zobristHash ^= sideZobristKey; // Update Zobrist hash for side change
-        board->sideToMove ^= 1; // Switch sides
-        
-        score = -negamax(board, -beta, -beta + 1, depth - 1 - NullMoveReduction); 
-        
+        score = -negamax(board, -beta, -beta + 1, depth - 1 - NullMoveReduction);
+
         ply--;
         repetitionIndex--;
-        takeBack(board, backup); // Restore the board state
+        takeBack(board, backup);
 
-        if (score >= beta) 
-            return beta; // Beta cutoff fails high
-        
+        if (searchParams->stop) {
+            return alpha;
+        }
+
+        if (score >= beta) {
+            return beta;
+        }
     }
 
     MoveList moveList;
     generateMoves(board, &moveList);
 
-    if (followPrincipalVariation) 
-        enablePrincipalVariationScoring(board, &moveList); // Enable PV scoring if following principal variation
+    if (followPrincipalVariation)
+        enablePrincipalVariationScoring(board, &moveList);
 
-    sortMoves(board, &moveList); // Sort moves by score
-
-    copyBoard(board); // Backup the current board state
+    sortMoves(board, &moveList);
+    copyBoard(board);
 
     for (int count = 0; count < moveList.count; ++count) {
-        repetitionTable[repetitionIndex++] = board->zobristHash; // Add current position to repetition table
-        if (makeMove(board, moveList.moves[count]) == 0){
-            repetitionIndex--; // Remove the position from the repetition table if move is illegals
-            continue; // Skip illegal moves
+        repetitionTable[repetitionIndex++] = board->zobristHash;
+        if (makeMove(board, moveList.moves[count]) == 0) {
+            repetitionIndex--;
+            continue;
         }
+
+        //currentLine[ply] = moveList.moves[count]; // Store move in current line
+
         ply++;
         legalMoves++;
-        
+
         if (movesSearched == 0) {
             score = -negamax(board, -beta, -alpha, depth - 1);
-        }
-        else{
-            // Late Move Reduction (LMR)
-            if(movesSearched >= FullDepthMoves && depth >= ReductionLimit && 
-                !inCheck && !decodeCapture(moveList.moves[count]) && !decodePromoted(moveList.moves[count]))
-                    score = -negamax(board, -alpha - 1, -alpha, depth - 2);
-            
-            else score = alpha + 1; // Ensure full-depth search
-            
-            // if found a better move during LMR
-            if(score > alpha)
-            {
-                // re-search at full depth but with narrowed score bandwith
-                score = -negamax(board, -alpha - 1, -alpha, depth-1);
-            
-                // if LMR fails re-search at full depth and full score bandwith
-                if((score > alpha) && (score < beta))
-                    score = -negamax(board, -beta, -alpha, depth-1);
+        } else {
+            if (movesSearched >= FullDepthMoves && depth >= ReductionLimit &&
+                !inCheck && !decodeCapture(moveList.moves[count]) && !decodePromoted(moveList.moves[count])) {
+                score = -negamax(board, -alpha - 1, -alpha, depth - 2);
+            } else {
+                score = alpha + 1;
+            }
+
+            if (score > alpha) {
+                score = -negamax(board, -alpha - 1, -alpha, depth - 1);
+                if ((score > alpha) && (score < beta)) {
+                    score = -negamax(board, -beta, -alpha, depth - 1);
+                }
             }
         }
 
-        movesSearched++; //comment this line to disable Late Move Reduction (LMR)
+        movesSearched++;
         ply--;
-        repetitionIndex--; // Remove the position from the repetition table after searching
-        takeBack(board, backup); // Restore the board state
-        
-        // PV node
+        repetitionIndex--;
+        takeBack(board, backup);
+
+        if (searchParams->stop) {
+            return alpha; // Stop search if requested
+        }
+
+        // Alpha raise logging
         if (score > alpha) {
+            hashFlag = hashExact;
 
-            hashFlag = hashExact; // Exact match
-
-            if (!decodeCapture(moveList.moves[count])){
-                historyMoves[decodePiece(moveList.moves[count])][decodeTarget(moveList.moves[count])] += depth; // Update history move
+            if (!decodeCapture(moveList.moves[count])) {
+                historyMoves[decodePiece(moveList.moves[count])][decodeTarget(moveList.moves[count])] += depth;
             }
-            alpha = score; // Update alpha for PV node
-            
-            PrincipalVariationTable[ply][ply] = moveList.moves[count]; // Store the best move in the principal variation table
-            
+
+            alpha = score;
+
+            PrincipalVariationTable[ply][ply] = moveList.moves[count];
             for (int nextPly = ply + 1; nextPly < PrincipalVariationLength[ply + 1]; nextPly++) {
-                PrincipalVariationTable[ply][nextPly] = PrincipalVariationTable[ply + 1][nextPly]; // Extend the principal variation
+                PrincipalVariationTable[ply][nextPly] = PrincipalVariationTable[ply + 1][nextPly];
             }
-            PrincipalVariationLength[ply] = PrincipalVariationLength[ply + 1]; // Update the length of the principal variation
+            PrincipalVariationLength[ply] = PrincipalVariationLength[ply + 1];
 
-            // fail-hard beta cutoff
+            // 📝 Log Alpha Raise
+            // logFile << "Alpha raised at ply " << ply << " depth " << depth
+            //         << " score " << score << " move " << moveToUCI(moveList.moves[count])
+            //         << " line: ";
+            // for (int i = 0; i <= ply; ++i)
+            //     logFile << moveToUCI(currentLine[i]) << " ";
+            // logFile << std::endl;
+
             if (score >= beta) {
+                writeHashEntry(board, beta, depth, hashBeta, ply);
 
-                writeHashEntry(board, beta, depth, hashBeta, ply); // Store beta cutoff in transposition table
-
-                if (!decodeCapture(moveList.moves[count])){
-                    killerMoves[1][ply] = killerMoves[0][ply]; 
+                if (!decodeCapture(moveList.moves[count])) {
+                    killerMoves[1][ply] = killerMoves[0][ply];
                     killerMoves[0][ply] = moveList.moves[count];
                 }
-                return beta; // Beta cutoff fails high
+
+                // 📝 Log Beta Cutoff
+                // logFile << "Beta cutoff at ply " << ply << " depth " << depth
+                //         << " score " << score << " move " << moveToUCI(moveList.moves[count])
+                //         << " line: ";
+                // for (int i = 0; i <= ply; ++i)
+                //     logFile << moveToUCI(currentLine[i]) << " ";
+                // logFile << std::endl;
+
+                return beta;
             }
         }
     }
 
     if (legalMoves == 0) {
-        // If no legal moves, check for checkmate or stalemate
-        if (inCheck)
-            alpha = -MATEVALUE + ply; // Checkmate
-        else
-            alpha = 0; // Stalemate
+        alpha = inCheck ? -MATEVALUE + ply : 0;
     }
 
-    writeHashEntry(board, alpha, depth, hashFlag, ply); // Store the best score in the transposition table
-
-    // node fails low
-    return alpha; // Return the best score found
+    writeHashEntry(board, alpha, depth, hashFlag, ply);
+    return alpha;
 }
 
-void searchPosition(Board *board, int depth) {
+
+void searchPosition(Board *board, SearchUCI *searchparams) {
+
+    searchParams[0] = *searchparams;
+    searchParams->stop = 0; // Reset stop flag
+    searchParams->quit = 0; // Reset quit flag
+
+    int depth = searchParams->depth;
+
+    // logFile << "\n\nStarting search with depth: " << depth << "\n";
+
     ply = 0;
     searchedNodes = 0;
     followPrincipalVariation = 0;
@@ -356,6 +443,12 @@ void searchPosition(Board *board, int depth) {
     //clearTranspositionTable(); // Clear the transposition table before starting the search
 
     for (int curDepth = 1; curDepth <= depth; curDepth++){
+
+        if (searchParams->stop or searchParams->quit) {
+            std::cout << "info Search Time Over" << std::endl;
+            break; // Stop search if requested
+        }
+
         followPrincipalVariation = 1;
 
         int score = negamax(board, alpha, beta, curDepth);

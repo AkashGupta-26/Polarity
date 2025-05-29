@@ -255,4 +255,7 @@ static inline void writeHashEntry(Board *board, int value, int depth, int flag, 
     entry->value = value;
 }
 
+U64 repetitionTable[200];
+int repetitionIndex = 0;
+
 #endif // BOARD_H;

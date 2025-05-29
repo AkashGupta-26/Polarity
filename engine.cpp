@@ -100,7 +100,7 @@ void uci(Board *board) {
         } else if (input.rfind("go", 0) == 0) {
             parseGo(board, input);
         } else if (input.rfind("position", 0) == 0) {
-            //clearTranspositionTable();
+            clearTranspositionTable();
             parsePosition(board, input);
         } else if (input == "d") {
             printBoard(board);
@@ -130,13 +130,13 @@ int main(){
     //cout << "Welcome to Polarity Chess Engine!" << endl;
     initializeAll();
     Board board;
-    int uciMode = 0;
+    int uciMode = 1;
     //MoveList list;
     if (uciMode) {
         uci(&board);
         return 0; // Exit after UCI initialization
     }
-    parseFEN(&board, cmk_position);
+    parseFEN(&board, repetition_position);
     printBoard(&board);
     searchPosition(&board, 10);
 

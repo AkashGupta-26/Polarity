@@ -6,7 +6,7 @@
 // #include "evaluate.h"
 #include "search.h"
 
-std::ofstream logFile("search_log.txt");
+//std::ofstream logFile("search_log.txt");
 
 using namespace std;
 
@@ -120,7 +120,7 @@ void parseGo(Board *board, const string &input, SearchUCI *searchParams) {
     if (time != -1){
         searchParams->timedGame = 1;
         time /= movestogo; // Calculate time per move
-        time -= 50;
+        time -= 10;
     }
 
     if (depth == -1){
@@ -182,6 +182,7 @@ void initializeAll() {
     initializeMoveTables();
     initializeRandomKeys();
     clearTranspositionTable();
+    initializeEvaluationMasks();
 }
 
 int main(){
@@ -189,19 +190,22 @@ int main(){
     initializeAll();
     Board board;
     SearchUCI searchParams;
-    searchParams.depth = 12; // Default search depth
+    searchParams.depth = 10; // Default search depth
     int uciMode = 1;
     //MoveList list;
     if (uciMode) {
         uci(&board, &searchParams);
         return 0; // Exit after UCI initialization
     }
-    parseFEN(&board, "3rr1k1/pb3ppp/4p3/n1p5/1Q5P/P1P5/qBPN1PP1/3RR1K1 w - - 0 21");
-    printBoard(&board);
-    searchPosition(&board, &searchParams); // Search with the initial position
 
-    makeMove(&board, PrincipalVariationTable[0][0]); // Make the first move from the principal variation
-    searchPosition(&board, &searchParams); // Search again after making the move
-    logFile.close();
+    parseFEN(&board, start_position);
+    printBoard(&board);
+    cout << evaluate(&board); // Initial evaluation
+    // printBoard(&board);
+    // searchPosition(&board, &searchParams); // Search with the initial position
+
+    // makeMove(&board, PrincipalVariationTable[0][0]); // Make the first move from the principal variation
+    // searchPosition(&board, &searchParams); // Search again after making the move
+    //logFile.close();
 
 }

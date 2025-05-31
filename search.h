@@ -435,6 +435,9 @@ void searchPosition(Board *board, SearchUCI *searchparams) {
 
     int alpha = -INFINITY;
     int beta = INFINITY;
+
+    int PrincipalVariationLastIteration[maxPly];
+    int bestEvaluationPreviousIteration = 0;
     
     memset(PrincipalVariationLength, 0, sizeof(PrincipalVariationLength)); 
     memset(PrincipalVariationTable, 0, sizeof(PrincipalVariationTable)); 
@@ -457,11 +460,21 @@ void searchPosition(Board *board, SearchUCI *searchparams) {
             alpha = -INFINITY; // Reset alpha if score is out of bounds
             beta = INFINITY; // Reset beta if score is out of bounds
             curDepth--; // reset depth to re-search with a wider score bandwith
+            //std:: cout << "info Full Search Re-Start at depth " << curDepth + 1 << std::endl;
             continue;
         }
         // aspiration window
         alpha = score - 50;
         beta = score + 50; // Narrow the search window for the next iteration
+
+        if (searchParams->stop || searchParams->quit) {
+            if (abs(bestEvaluationPreviousIteration - score) > 150){
+                std::cout << "info unfinished search instability" << std::endl;
+                break; // Dont use this search result if the evaluation changed too much on stopping search forcefully
+            }
+        }
+
+        bestEvaluationPreviousIteration = score;
 
         if (score > 10000 || score < -10000) {
             std::cout << "info score mate " << (score > 0 ? (MATEVALUE - score)/2 + 1 : -(MATEVALUE + score)/2 - 1) 
@@ -474,10 +487,11 @@ void searchPosition(Board *board, SearchUCI *searchparams) {
         for (int i = 0; i <= PrincipalVariationLength[0]; i++) {
             if (PrincipalVariationTable[0][i] == 0) break; // Stop at the end of the principal variation
             std::cout << moveToUCI(PrincipalVariationTable[0][i]) << " ";
+            PrincipalVariationLastIteration[i] = PrincipalVariationTable[0][i];
         }
         std::cout << std::endl;
     }
-    std::cout << "bestmove " << moveToUCI(PrincipalVariationTable[0][0]) << std::endl;
+    std::cout << "bestmove " << moveToUCI(PrincipalVariationLastIteration[0]) << std::endl;
 }
 
 #endif // SEARCH_H;

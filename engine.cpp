@@ -198,7 +198,7 @@ int main(){
         return 0; // Exit after UCI initialization
     }
 
-    parseFEN(&board, start_position);
+    parseFEN(&board, "3K4/7r/8/8/3k4/8/8/8 w - -");
     printBoard(&board);
     cout << evaluate(&board); // Initial evaluation
     // printBoard(&board);

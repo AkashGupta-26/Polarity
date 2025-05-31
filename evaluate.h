@@ -30,6 +30,7 @@ const int pieceValue[2][12] = {
 };
 
 const int phaseScore[12] = {0, 1, 1, 2, 4, 0, 0, 1, 1, 2, 4, 0};
+const int endGamePhaseMaterialScore = 2 * phaseScore[R] + phaseScore[B] + phaseScore[N];
 
 const int pawnSquareTable[2][64] = {
     { // MGpawnSquareTable
@@ -169,6 +170,17 @@ const int kingSquareTable[2][64] = {
     }
 };
 
+const int DistanceFromCentre[64] = {
+    6, 5, 4, 3, 3, 4, 5, 6, 
+    5, 4, 3, 2, 2, 3, 4, 5, 
+    4, 3, 2, 1, 1, 2, 3, 4, 
+    3, 2, 1, 0, 0, 1, 2, 3, 
+    3, 2, 1, 0, 0, 1, 2, 3, 
+    4, 3, 2, 1, 1, 2, 3, 4, 
+    5, 4, 3, 2, 2, 3, 4, 5, 
+    6, 5, 4, 3, 3, 4, 5, 6
+};
+
 U64 fileMasks[64];
 U64 rankMasks[64];
 
@@ -220,6 +232,22 @@ void initializeEvaluationMasks() {
     }
 }
 
+static inline int MopUpEvaluation(Board *board, int perspective, int friendlymaterial, int opponentmaterial, float endgameWeight) {
+    int score = 0;
+
+    if (friendlymaterial < opponentmaterial || endgameWeight == 0) return 0;
+
+    int opponentKingSquare = getLSBindex(board->bitboards[(perspective == white) ? k : K]);
+    int friendlyKingSquare = getLSBindex(board->bitboards[(perspective== white) ? K : k]);
+
+    score += DistanceFromCentre[opponentKingSquare] * 10;
+    int distbetweenKings = std::abs((opponentKingSquare / 8) - (friendlyKingSquare / 8)) +
+                        std::abs((opponentKingSquare % 8) - (friendlyKingSquare % 8));
+    
+    score += (14 - distbetweenKings) * 4; // Encourage keeping kings close
+    return score * endgameWeight; // Scale score by endgame weight
+}
+
 
 static inline int evaluate(Board *board) {
     int mgScore = 0;
@@ -227,7 +255,8 @@ static inline int evaluate(Board *board) {
     int score = 0;
 
     int phase = 0;
-
+    int whitePhase = 0;
+    int blackPhase = 0;
     U64 bitboard;
     int square;
     int numPawnsOnFile;
@@ -242,6 +271,8 @@ static inline int evaluate(Board *board) {
             egScore += pieceValue[1][piece];
 
             phase += phaseScore[piece];
+            whitePhase += (piece < 6) ? phaseScore[piece] : 0;
+            blackPhase += (piece >= 6) ? phaseScore[piece] : 0;
 
             switch (piece) {
                 case P:
@@ -336,7 +367,14 @@ static inline int evaluate(Board *board) {
         }
     }
 
-    phase = std::max(24, phase);
+    float whiteEndGamePhase = 1 - std::min(1.0f, float(whitePhase) / float(endGamePhaseMaterialScore));
+    float blackEndGamePhase = 1 - std::min(1.0f, float(blackPhase) / float(endGamePhaseMaterialScore));
+
+    int mopUpScore = MopUpEvaluation(board, white, whitePhase, blackPhase, blackEndGamePhase)
+                   - MopUpEvaluation(board, black, blackPhase, whitePhase, whiteEndGamePhase); 
+
+    egScore += mopUpScore;
+    phase = std::min(24, phase);
     score = (mgScore * phase + egScore * (24 - phase)) / 24;
     return board->sideToMove == white ? score : -score;
 }

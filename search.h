@@ -468,9 +468,9 @@ void searchPosition(Board *board, SearchUCI *searchparams) {
         beta = score + 50; // Narrow the search window for the next iteration
 
         if (searchParams->stop || searchParams->quit) {
-            if (abs(bestEvaluationPreviousIteration - score) > 150){
+            if (abs(bestEvaluationPreviousIteration - score) > 100 || MATEVALUE - abs(score) < 20){
                 std::cout << "info unfinished search instability" << std::endl;
-                break; // Dont use this search result if the evaluation changed too much on stopping search forcefully
+                break; // Dont use this search result if the evaluation changed too much or Mate found on board on stopping search forcefully
             }
         }
 

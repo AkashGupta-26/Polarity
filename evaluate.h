@@ -192,6 +192,8 @@ const int doublePawnPenalty = -10;
 const int isolatedPawnPenalty = -10;
 const int passedPawnBonus[8] = {0, 5, 10, 20, 30, 45, 60, 0};
 
+const int semiOpenFileBonus = 15;
+const int openFileBonus = 20;
 
 U64 setFileRankMasks(int file, int rank) {
     U64 mask = 0ULL;
@@ -307,6 +309,15 @@ static inline int evaluate(Board *board) {
                 case R:
                     mgScore += rookSquareTable[0][square];
                     egScore += rookSquareTable[1][square];
+
+                    if ((board->bitboards[P] & fileMasks[square]) == 0) {
+                        mgScore += semiOpenFileBonus;
+                        egScore += semiOpenFileBonus;
+                    } 
+                    if (((board->bitboards[p] | board->bitboards[P]) & fileMasks[square]) == 0) {
+                        mgScore += openFileBonus;
+                        egScore += openFileBonus;
+                    }
                     break;
 
                 case Q:
@@ -317,6 +328,16 @@ static inline int evaluate(Board *board) {
                 case K:
                     mgScore += kingSquareTable[0][square];
                     egScore += kingSquareTable[1][square];
+
+                    // Encourage king safety by penalizing if the king is on a file with no pawns
+                    if ((board->bitboards[P] & fileMasks[square]) == 0) {
+                        mgScore -= semiOpenFileBonus;
+                        egScore -= semiOpenFileBonus;
+                    } 
+                    if (((board->bitboards[p] | board->bitboards[P]) & fileMasks[square]) == 0) {
+                        mgScore -= openFileBonus;
+                        egScore -= openFileBonus;
+                    }
                     break;
 
                 case p:
@@ -351,6 +372,15 @@ static inline int evaluate(Board *board) {
                 case r:
                     mgScore -= rookSquareTable[0][mirrorSquare[square]];
                     egScore -= rookSquareTable[1][mirrorSquare[square]];
+
+                    if ((board->bitboards[p] & fileMasks[square]) == 0) {
+                        mgScore -= semiOpenFileBonus;
+                        egScore -= semiOpenFileBonus;
+                    } 
+                    if (((board->bitboards[p] | board->bitboards[P]) & fileMasks[square]) == 0) {
+                        mgScore -= openFileBonus;
+                        egScore -= openFileBonus;
+                    }
                     break;
                 
                 case q:
@@ -361,6 +391,16 @@ static inline int evaluate(Board *board) {
                 case k:
                     mgScore -= kingSquareTable[0][mirrorSquare[square]];
                     egScore -= kingSquareTable[1][mirrorSquare[square]];
+
+                    // Encourage king safety by penalizing(incrementing for black) if the king is on a file with no pawns
+                    if ((board->bitboards[p] & fileMasks[square]) == 0) {
+                        mgScore += semiOpenFileBonus;
+                        egScore += semiOpenFileBonus;
+                    } 
+                    if (((board->bitboards[p] | board->bitboards[P]) & fileMasks[square]) == 0) {
+                        mgScore += openFileBonus;
+                        egScore += openFileBonus;
+                    }
                     break;
             }
             popBit(bitboard, square);

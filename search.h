@@ -184,12 +184,25 @@ static inline void sortMoves(Board *board, MoveList *list) {
 }
 
 static inline int detectRepetition(Board *board) {
-    for (int i = 0; i < repetitionIndex; ++i) {
+    for (int i = std::max(0, repetitionIndex - 100); i < repetitionIndex; ++i) {
         if (repetitionTable[i] == board->zobristHash) {
             return 1; // Repetition detected
         }
     }
     return 0; // No repetition
+}
+
+static inline int numLegalMovesInPosition(Board *board) {
+    int legalMoves = 0;
+    MoveList moveList;
+    generateMoves(board, &moveList);
+    copyBoard(board); // Backup the current board state
+    for (int i = 0; i < moveList.count; ++i) {
+        if (makeMove(board, moveList.moves[i]) == 0) continue; // Skip illegal moves
+        legalMoves++;
+        takeBack(board, backup); // Restore the board state
+    }
+    return legalMoves;
 }
 
 // Quiescence search to handle captures
@@ -262,6 +275,15 @@ static inline int negamax(Board *board, int alpha, int beta, int depth) {
         return 0;
     }
 
+    int inCheck = isBoardInCheck(board);
+
+    if (board->halfMoveClock >= 100) {
+        if (inCheck && numLegalMovesInPosition(board) == 0) {
+            return -MATESCORE + ply; // Checkmate
+        }
+        return 0; // Draw by fifty-move rule
+    }
+
     int PVnode = (beta - alpha > 1);
 
     if (!PVnode && ply && (score = readHashEntry(board, alpha, beta, depth, ply)) != noHashEntry) {
@@ -276,7 +298,6 @@ static inline int negamax(Board *board, int alpha, int beta, int depth) {
 
     searchedNodes++;
 
-    int inCheck = isBoardInCheck(board);
     if (inCheck) depth++;
 
     int legalMoves = 0;
@@ -484,7 +505,7 @@ void searchPosition(Board *board, SearchUCI *searchparams) {
             std::cout << "info score cp " << score << " depth " << curDepth
                 << " nodes " << searchedNodes << " pv ";
 
-        for (int i = 0; i <= PrincipalVariationLength[0]; i++) {
+        for (int i = 0; i < PrincipalVariationLength[0]; i++) {
             if (PrincipalVariationTable[0][i] == 0) break; // Stop at the end of the principal variation
             std::cout << moveToUCI(PrincipalVariationTable[0][i]) << " ";
             PrincipalVariationLastIteration[i] = PrincipalVariationTable[0][i];

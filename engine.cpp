@@ -76,7 +76,7 @@ void parsePosition(Board *board, const string &input) {
 void parseGo(Board *board, const string &input, SearchUCI *searchParams) {
     // Handles "go depth 10"
     int depth = -1, movestogo = 30, movetime = -1;
-    int time = 90000, inc = 0; // default time set to 90 seconds
+    int time = 1800000, inc = 0; // default time per move set to 60 seconds
     size_t pos = input.find("depth ");
     if (pos != string::npos) {
         depth = stoi(input.substr(pos + 6));
@@ -192,13 +192,15 @@ int main(){
     SearchUCI searchParams;
     searchParams.depth = 10; // Default search depth
     int uciMode = 1;
-    //MoveList list;
+    MoveList list;
     if (uciMode) {
         uci(&board, &searchParams);
         return 0; // Exit after UCI initialization
     }
 
-    parseFEN(&board, "3K4/7r/8/8/3k4/8/8/8 w - -");
+    parseFEN(&board, "8/8/1R6/3k4/6P1/8/1p5K/8 b - - 0 48");
+    generateMoves(&board, &list);
+    printMoveList(&list);
     printBoard(&board);
     cout << evaluate(&board); // Initial evaluation
     // printBoard(&board);

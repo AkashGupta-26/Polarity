@@ -264,7 +264,12 @@ static inline void generateMoves(Board *board, MoveList *moves) {
         while(bitboard) {
             source = getLSBindex(bitboard);
             // enpassant square can also be treated as occupied
-            attacks = pawnAttacks[black][source] & ((board->occupancies[white] | (1ULL << board->enPassantSquare)));
+            U64 occupanciesWhite = board->occupancies[white];
+            // this special case is need when black pawn is on b2 and and ep square is noSquare
+            if (board->enPassantSquare != noSquare) {
+                occupanciesWhite |= (1ULL << board->enPassantSquare);
+            }
+            attacks = pawnAttacks[black][source] & occupanciesWhite;
             while (attacks) {
                 target = getLSBindex(attacks);
                 if (target >= a1 && target <= h1) {
@@ -427,6 +432,10 @@ static inline int makeMove(Board *board, int move, int onlyCaptures = 0) {
     board->zobristHash ^= pieceZobristKeys[piece][source];
     board->zobristHash ^= pieceZobristKeys[piece][target];
 
+    board->halfMoveClock++;
+
+    if (piece == P || piece == p) board->halfMoveClock = 0; // Reset half-move clock for pawn moves
+
     if (capture) {
         int startPiece = (board->sideToMove == white) ? p : P;
         int endPiece = (board->sideToMove == white) ? k : K;
@@ -437,6 +446,7 @@ static inline int makeMove(Board *board, int move, int onlyCaptures = 0) {
                 break;
             }
         }
+        board->halfMoveClock = 0; // Reset half-move clock on capture
     }
 
     if (promotedPiece) {

@@ -39,6 +39,7 @@ struct Board{
     int sideToMove;
     int castlingRights; // Bitmask for castling rights
     int enPassantSquare; // Square for en passant capture
+    int halfMoveClock; // Half-move clock for the fifty-move rule
     U64 zobristHash; // Zobrist hash for the board state
 };
 
@@ -100,6 +101,7 @@ void clearBoard(Board* board) {
     board->castlingRights = 0; // No castling rights
     board->enPassantSquare = noSquare; // No en passant square
     board->zobristHash = 0ULL; // Reset Zobrist hash
+    board->halfMoveClock = 0; // Reset half-move clock
 }
 
 void printBoard(Board* board) {
@@ -150,8 +152,8 @@ void parseFEN(Board* board, const std::string& fen) {
     clearBoard(board);
     repetitionIndex = 0;
     std::istringstream iss(fen);
-    std::string boardPart, side, castling, enPassant;
-    iss >> boardPart >> side >> castling >> enPassant;
+    std::string boardPart, side, castling, enPassant, halfMoveClock;;
+    iss >> boardPart >> side >> castling >> enPassant >> halfMoveClock;
 
     int square = 56; // Start at a8
 
@@ -196,6 +198,9 @@ void parseFEN(Board* board, const std::string& fen) {
     } else {
         board->enPassantSquare = noSquare;
     }
+
+    // Set half-move clock
+    board->halfMoveClock = std::stoi(halfMoveClock);
 
     // Update the Zobrist hash
     board -> zobristHash = computeZobristHash(board);

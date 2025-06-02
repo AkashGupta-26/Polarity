@@ -6,7 +6,7 @@
 #include "precalculated_move_tables.h"
 #include "moves.h"
 
-long long nodes = 0;
+U64 nodes = 0;
 
 void perft(Board *board, int depth) {
     if (depth == 0) {
@@ -31,7 +31,7 @@ int perftTest(Board *board, int depth, int verbose = 0) {
     MoveList moves[1];
     generateMoves(board, moves);
     copyBoard(board);
-    int cumNodes = 0;
+    U64 cumNodes = 0;
     auto startTime = TIME_IN_MICROSECONDS;
     for (int i = 0; i < moves->count; ++i) {
         int move = moves->moves[i];

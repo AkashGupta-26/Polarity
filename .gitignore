@@ -55,7 +55,9 @@ dkms.conf
 # Random files and directories
 .vscode/
 PGNs/
+Compiled-exes/
 
 searchNew.h
 search_log.txt
 helper.cpp
+helperFile.py

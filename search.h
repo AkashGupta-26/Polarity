@@ -87,7 +87,7 @@ const int maxPly = 64;
 
 // Search parameters
 int ply; 
-int searchedNodes; 
+U64 searchedNodes; 
 
 // Late Move Reduction (LMR) parameters
 const int FullDepthMoves = 4; // Number of moves to search at full depth

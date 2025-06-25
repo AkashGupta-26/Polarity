@@ -208,7 +208,11 @@ static inline void generateMoves(Board *board, MoveList *moves) {
         while(bitboard) {
             source = getLSBindex(bitboard);
             // enpassant square can also be treated as occupied
-            attacks = pawnAttacks[white][source] & ((board->occupancies[black] | (1ULL << board->enPassantSquare)));
+            U64 occupanciesBlack = board->occupancies[black];
+            if (board->enPassantSquare != noSquare) {
+                occupanciesBlack |= (1ULL << board->enPassantSquare);
+            }
+            attacks = pawnAttacks[white][source] & occupanciesBlack;
             while (attacks) {
                 target = getLSBindex(attacks);
                 if (target >= a8 && target <= h8) {

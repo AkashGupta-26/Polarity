@@ -211,7 +211,7 @@ void parseFEN(Board* board, const std::string& fen) {
 #define hashAlpha 1
 #define hashBeta 2
 
-#define TranspositionTableEntries 0x400000 // 4 million entries
+long long TranspositionTableEntries;
 #define getTTIndex(key) ((key) % TranspositionTableEntries)
 
 #define noHashEntry 100000 // outside alpha-beta bounds
@@ -221,10 +221,11 @@ typedef struct {
     int depth;
     int flag; // 0: exact, 1: alpha, 2: beta
     int value;
+    int bestMove;
 } HashEntry;
 
 // Transposition Table
-HashEntry TranspositionTable[TranspositionTableEntries];
+HashEntry *TranspositionTable = NULL;
 
 void clearTranspositionTable() {
     for (int i = 0; i < TranspositionTableEntries; ++i) {
@@ -232,10 +233,31 @@ void clearTranspositionTable() {
         TranspositionTable[i].depth = 0;
         TranspositionTable[i].flag = 0;
         TranspositionTable[i].value = 0;
+        TranspositionTable[i].bestMove = 0;
     }
 }
 
-static inline int readHashEntry(Board *board, int alpha, int beta, int depth, int ply = 0) {
+void initializeTranspositionSize(int MB){
+    if (MB <= 0) {
+        std::cout << "Invalid size for transposition table, must be greater than 0 MB" << std::endl;
+        return;
+    }
+    TranspositionTableEntries = MB * 1024 * 1024 / sizeof(HashEntry);
+    if (TranspositionTable != NULL) {
+        delete[] TranspositionTable; // Free existing table if it exists
+    }
+    TranspositionTable = new HashEntry[TranspositionTableEntries];
+    if (TranspositionTable == NULL) {
+        std::cout << "Failed to allocate memory for transposition table, trying " << MB/2 << " MB" << std::endl;
+        initializeTranspositionSize(MB/2);
+    }
+    else{
+        clearTranspositionTable(); // Clear the table after allocation
+        std::cout << "Transposition table initialized with " << TranspositionTableEntries << " entries." << std::endl;
+    }
+}
+
+static inline int readHashEntry(Board *board, int* bestMove, int alpha, int beta, int depth, int ply = 0) {
     HashEntry *entry = &TranspositionTable[getTTIndex(board->zobristHash)];
 
     if (entry->key == board->zobristHash && entry->depth >= depth){
@@ -248,11 +270,11 @@ static inline int readHashEntry(Board *board, int alpha, int beta, int depth, in
         if (entry->flag == hashAlpha && value <= alpha) return alpha; // fails low
         if (entry->flag == hashBeta && value >= beta) return beta; // fails high
     }
-
+    *bestMove = entry->bestMove;
     return noHashEntry; // No valid entry found
 }
 
-static inline void writeHashEntry(Board *board, int value, int depth, int flag, int ply = 0) {
+static inline void writeHashEntry(Board *board, int bestMove, int value, int depth, int flag, int ply = 0) {
     HashEntry *entry = &TranspositionTable[getTTIndex(board->zobristHash)];
 
     if (value < -MATESCORE) value -= ply;
@@ -262,6 +284,7 @@ static inline void writeHashEntry(Board *board, int value, int depth, int flag, 
     entry->depth = depth;
     entry->flag = flag;
     entry->value = value;
+    entry->bestMove = bestMove;
 }
 
 #endif // BOARD_H;

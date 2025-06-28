@@ -138,8 +138,14 @@ void parseGo(Board *board, const string &input, SearchUCI *searchParams) {
 }
 
 void uci(Board *board, SearchUCI *searchParams) {
+
+    int maxHashSize = 128;
+    int minHashSize = 4;
+    int hashSize = 64; // Default hash size in MB
+
     cout << "id name Polarity" << endl;
     cout << "id author Magnet" << endl;
+    cout << "option name Hash type spin default 64 min 4 max 128" << endl;
     cout << "uciok" << endl;
     string input;
     while (getline(cin, input)) {
@@ -172,6 +178,14 @@ void uci(Board *board, SearchUCI *searchParams) {
         } else if (input == "ucinewgame") {
             parsePosition(board, "position startpos");
             clearTranspositionTable();
+        } else if (input.rfind("setoption name Hash value ", 0) == 0) {
+            size_t pos = input.find("value ");
+            if (pos != string::npos) {
+                hashSize = stoi(input.substr(pos + 6));
+                if (hashSize < minHashSize) hashSize = minHashSize;
+                if (hashSize > maxHashSize) hashSize = maxHashSize;
+                initializeTranspositionSize(hashSize);
+            }
         } else {
             cout << "Unknown command: " << input << endl;
         }
@@ -181,7 +195,7 @@ void uci(Board *board, SearchUCI *searchParams) {
 void initializeAll() {
     initializeMoveTables();
     initializeRandomKeys();
-    clearTranspositionTable();
+    initializeTranspositionSize(64);
     initializeEvaluationMasks();
 }
 

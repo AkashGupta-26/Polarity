@@ -165,12 +165,16 @@ void printMoveScores(Board *board, MoveList *list) {
     }
 }
 
-static inline void sortMoves(Board *board, MoveList *list) {
+static inline void sortMoves(Board *board, MoveList *list, int bestMove = 0) {
     int n = list->count;
     if (n <= 1) return;
 
     ScoredMove scoredMoves[300];
     for (int i = 0; i < n; ++i) {
+        if (list->moves[i] == bestMove) {
+            scoredMoves[i] = { list->moves[i], 30000 }; // Highest score for principal variation move
+            continue;
+        }
         scoredMoves[i] = { list->moves[i], scoreMove(board, list->moves[i]) };
     }
 
@@ -268,6 +272,8 @@ static inline int negamax(Board *board, int alpha, int beta, int depth) {
     int score;
     int hashFlag = hashAlpha;
 
+    int bestMove = 0;
+
     PrincipalVariationLength[ply] = ply;
 
     if (ply && detectRepetition(board)) {
@@ -286,7 +292,7 @@ static inline int negamax(Board *board, int alpha, int beta, int depth) {
 
     int PVnode = (beta - alpha > 1);
 
-    if (!PVnode && ply && (score = readHashEntry(board, alpha, beta, depth, ply)) != noHashEntry) {
+    if (!PVnode && ply && (score = readHashEntry(board, &bestMove, alpha, beta, depth, ply)) != noHashEntry) {
         return score;
     }
 
@@ -343,7 +349,7 @@ static inline int negamax(Board *board, int alpha, int beta, int depth) {
     if (followPrincipalVariation)
         enablePrincipalVariationScoring(board, &moveList);
 
-    sortMoves(board, &moveList);
+    sortMoves(board, &moveList, bestMove);
     copyBoard(board);
 
     for (int count = 0; count < moveList.count; ++count) {
@@ -389,6 +395,8 @@ static inline int negamax(Board *board, int alpha, int beta, int depth) {
         if (score > alpha) {
             hashFlag = hashExact;
 
+            bestMove = moveList.moves[count];
+
             if (!decodeCapture(moveList.moves[count])) {
                 historyMoves[decodePiece(moveList.moves[count])][decodeTarget(moveList.moves[count])] += depth;
             }
@@ -410,7 +418,7 @@ static inline int negamax(Board *board, int alpha, int beta, int depth) {
             // logFile << std::endl;
 
             if (score >= beta) {
-                writeHashEntry(board, beta, depth, hashBeta, ply);
+                writeHashEntry(board, bestMove, beta, depth, hashBeta, ply);
 
                 if (!decodeCapture(moveList.moves[count])) {
                     killerMoves[1][ply] = killerMoves[0][ply];
@@ -434,7 +442,7 @@ static inline int negamax(Board *board, int alpha, int beta, int depth) {
         alpha = inCheck ? -MATEVALUE + ply : 0;
     }
 
-    writeHashEntry(board, alpha, depth, hashFlag, ply);
+    writeHashEntry(board, bestMove, alpha, depth, hashFlag, ply);
     return alpha;
 }
 
@@ -499,11 +507,11 @@ void searchPosition(Board *board, SearchUCI *searchparams) {
 
         if (score > 10000 || score < -10000) {
             std::cout << "info score mate " << (score > 0 ? (MATEVALUE - score)/2 + 1 : -(MATEVALUE + score)/2 - 1) 
-                << " depth " << curDepth << " nodes " << searchedNodes << std::endl;
+                << " depth " << curDepth << " nodes " << searchedNodes << " time " << TIME_IN_MILLISECONDS - searchParams->startTime << " pv ";
         }
         else
             std::cout << "info score cp " << score << " depth " << curDepth
-                << " nodes " << searchedNodes << " pv ";
+                << " nodes " << searchedNodes << " time " << TIME_IN_MILLISECONDS - searchParams->startTime << " pv ";
 
         for (int i = 0; i < PrincipalVariationLength[0]; i++) {
             if (PrincipalVariationTable[0][i] == 0) break; // Stop at the end of the principal variation

@@ -236,6 +236,33 @@ void initializeEvaluationMasks() {
     }
 }
 
+static inline bool insufficientMaterial(Board *board) {
+    if (board->bitboards[P] | board->bitboards[p]) return false;
+    if (board->bitboards[Q] | board->bitboards[q]) return false;
+    if (board->bitboards[R] | board->bitboards[r]) return false;
+
+    int whiteBishops = countBits(board->bitboards[B]);
+    int blackBishops = countBits(board->bitboards[b]);
+    if (whiteBishops > 1 || blackBishops > 1) return false;
+
+    int whiteKnights = countBits(board->bitboards[N]);
+    int blackKnights = countBits(board->bitboards[n]);
+    if (whiteKnights > 1 || blackKnights > 1) return false;
+
+    if (whiteKnights + whiteBishops > 1 || blackKnights + blackBishops > 1) return false;
+
+    if (whiteBishops == 1 && blackBishops == 1) {
+        int whiteSq = getLSBindex(board->bitboards[B]);
+        int blackSq = getLSBindex(board->bitboards[b]);
+        // If bishops are on same-colored squares, it's insufficient
+        bool sameColor = ((whiteSq ^ blackSq) & 1) == 0;
+        return sameColor;
+    }
+
+    return true;
+}
+
+
 static inline int MopUpEvaluation(Board *board, int perspective, int friendlymaterial, int opponentmaterial, float endgameWeight) {
     int score = 0;
 
@@ -429,8 +456,8 @@ static inline int evaluate(Board *board) {
     float whiteEndGamePhase = 1 - std::min(1.0f, float(whitePhase) / float(endGamePhaseMaterialScore));
     float blackEndGamePhase = 1 - std::min(1.0f, float(blackPhase) / float(endGamePhaseMaterialScore));
 
-    int mopUpScore = MopUpEvaluation(board, white, whitePhase, blackPhase, blackEndGamePhase)
-                   - MopUpEvaluation(board, black, blackPhase, whitePhase, whiteEndGamePhase); 
+    int mopUpScore = MopUpEvaluation(board, white, whitePhase, blackPhase, blackEndGamePhase) 
+                    - MopUpEvaluation(board, black, blackPhase, whitePhase, whiteEndGamePhase); 
 
     egScore += mopUpScore;
     phase = std::min(24, phase);

@@ -164,7 +164,7 @@ void uci(Board *board, SearchUCI *searchParams) {
         }else if (input.rfind("go", 0) == 0) {
             parseGo(board, input, searchParams);
         } else if (input.rfind("position", 0) == 0) {
-            clearTranspositionTable();
+            //clearTranspositionTable();
             parsePosition(board, input);
         } else if (input == "d") {
             printBoard(board);
@@ -209,19 +209,16 @@ int main(){
     MoveList list;
     if (uciMode) {
         uci(&board, &searchParams);
+        delete[] TranspositionTable; // Clean up transposition table
         return 0; // Exit after UCI initialization
     }
 
-    parseFEN(&board, "8/8/1R6/3k4/6P1/8/1p5K/8 b - - 0 48");
+    parseFEN(&board, "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
     generateMoves(&board, &list);
     printMoveList(&list);
     printBoard(&board);
     cout << evaluate(&board); // Initial evaluation
-    // printBoard(&board);
-    // searchPosition(&board, &searchParams); // Search with the initial position
 
-    // makeMove(&board, PrincipalVariationTable[0][0]); // Make the first move from the principal variation
-    // searchPosition(&board, &searchParams); // Search again after making the move
-    //logFile.close();
-
+    delete[] TranspositionTable; // Clean up transposition table
+    return 0;
 }

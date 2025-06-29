@@ -496,6 +496,10 @@ void searchPosition(Board *board, SearchUCI *searchparams) {
         alpha = score - 50;
         beta = score + 50; // Narrow the search window for the next iteration
 
+        /* I tried removing Aspiration windows and the result was worse
+           than using them for reasons I don't know :| 
+           Since it works, I am not touching it*/
+
         if (searchParams->stop || searchParams->quit) {
             if (abs(bestEvaluationPreviousIteration - score) > 100 || MATEVALUE - abs(score) < 20){
                 std::cout << "info unfinished search instability" << std::endl;

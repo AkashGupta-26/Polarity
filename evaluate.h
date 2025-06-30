@@ -252,11 +252,9 @@ static inline bool insufficientMaterial(Board *board) {
     if (whiteKnights + whiteBishops > 1 || blackKnights + blackBishops > 1) return false;
 
     if (whiteBishops == 1 && blackBishops == 1) {
-        int whiteSq = getLSBindex(board->bitboards[B]);
-        int blackSq = getLSBindex(board->bitboards[b]);
-        // If bishops are on same-colored squares, it's insufficient
-        bool sameColor = ((whiteSq ^ blackSq) & 1) == 0;
-        return sameColor;
+        bool whiteBishopOnLight = (board->bitboards[B] & LIGHT_SQUARES) != 0;
+        bool blackBishopOnLight = (board->bitboards[b] & LIGHT_SQUARES) != 0;
+        return whiteBishopOnLight == blackBishopOnLight;
     }
 
     return true;
@@ -451,6 +449,10 @@ static inline int evaluate(Board *board) {
             }
             popBit(bitboard, square);
         }
+    }
+
+    if (phase <= 3 && insufficientMaterial(board)) {
+        return 0; // Draw by insufficient material
     }
 
     float whiteEndGamePhase = 1 - std::min(1.0f, float(whitePhase) / float(endGamePhaseMaterialScore));

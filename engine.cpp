@@ -205,7 +205,7 @@ int main(){
     Board board;
     SearchUCI searchParams;
     searchParams.depth = 10; // Default search depth
-    int uciMode = 1;
+    int uciMode = 0;
     MoveList list;
     if (uciMode) {
         uci(&board, &searchParams);
@@ -213,7 +213,7 @@ int main(){
         return 0; // Exit after UCI initialization
     }
 
-    parseFEN(&board, "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
+    parseFEN(&board, "8/8/5K2/8/3B4/1b3k2/8/8 b - - 7 68");
     generateMoves(&board, &list);
     printMoveList(&list);
     printBoard(&board);

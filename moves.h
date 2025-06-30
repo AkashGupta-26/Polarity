@@ -4,6 +4,9 @@
 #include "board.h"
 #include "precalculated_move_tables.h"
 
+#define isBoardInCheck(board) \
+    isSquareAttacked(board, getLSBindex(board->bitboards[(board->sideToMove == white) ? K : k]), board->sideToMove ^ 1)
+
 /*
 wk = 0001, wq = 0010, bk = 0100, bq = 1000
 
@@ -415,7 +418,7 @@ void printMoveList(const MoveList *list) {
 
 
 static inline int makeMove(Board *board, int move, int onlyCaptures = 0) {
-    if (onlyCaptures && !decodeCapture(move)) {
+    if (onlyCaptures && !decodeCapture(move) && !isBoardInCheck(board)) {
         return 0;
     }
 

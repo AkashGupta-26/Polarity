@@ -290,10 +290,6 @@ static inline int negamax(Board *board, int alpha, int beta, int depth) {
         return 0; // Draw by fifty-move rule
     }
 
-    if (insufficientMaterial(board)) {
-        return 0; // Draw by insufficient material
-    }
-
     int PVnode = (beta - alpha > 1);
 
     if (!PVnode && ply && (score = readHashEntry(board, &bestMove, alpha, beta, depth, ply)) != noHashEntry) {

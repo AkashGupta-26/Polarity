@@ -140,6 +140,11 @@ void printBitboard(U64 bitboard) {
 #define RANK_7 0x00FF000000000000ULL
 #define RANK_8 0xFF00000000000000ULL
 
+// Square Color Masks
+#define LIGHT_SQUARES 0x55AA55AA55AA55AAULL // 0b0101010101010101010101010101010101010101010101010101010101010101
+#define DARK_SQUARES  0xAA55AA55AA55AA55ULL // 0b1010101010101010101010101010101010101010101010101010101010101010
+
+
 // Time in milliseconds
 #define TIME_IN_MILLISECONDS std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count()
 

@@ -124,7 +124,7 @@ void parseGo(Board *board, const string &input, SearchUCI *searchParams) {
     }
 
     if (depth == -1){
-        depth = 40;
+        depth = 60;
     }
 
     searchParams->depth = depth;
@@ -205,7 +205,7 @@ int main(){
     Board board;
     SearchUCI searchParams;
     searchParams.depth = 10; // Default search depth
-    int uciMode = 0;
+    int uciMode = 1;
     MoveList list;
     if (uciMode) {
         uci(&board, &searchParams);

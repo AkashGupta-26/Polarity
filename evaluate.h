@@ -10,9 +10,6 @@
 #define MG 0
 #define EG 1
 
-#define isBoardInCheck(board) \
-    isSquareAttacked(board, getLSBindex(board->bitboards[(board->sideToMove == white) ? K : k]), board->sideToMove ^ 1)
-
 const int mirrorSquare[] = {
     a8, b8, c8, d8, e8, f8, g8, h8,
     a7, b7, c7, d7, e7, f7, g7, h7,
@@ -181,6 +178,28 @@ const int DistanceFromCentre[64] = {
     6, 5, 4, 3, 3, 4, 5, 6
 };
 
+const int ProximityToDarkCorner[64] = {
+    7, 6, 5, 4, 3, 2, 1, 0,
+    6, 5, 4, 3, 2, 1, 0, 1,
+    5, 4, 3, 2, 1, 0, 1, 2,
+    4, 3, 2, 1, 0, 1, 2, 3,
+    3, 2, 1, 0, 1, 2, 3, 4,
+    2, 1, 0, 1, 2, 3, 4, 5,
+    1, 0, 1, 2, 3, 4, 5, 6,
+    0, 1, 2, 3, 4, 5, 6, 7
+};
+
+const int ProximityToLightCorner[64] = {
+    0, 1, 2, 3, 4, 5, 6, 7,
+    1, 0, 1, 2, 3, 4, 5, 6,
+    2, 1, 0, 1, 2, 3, 4, 5,
+    3, 2, 1, 0, 1, 2, 3, 4,
+    4, 3, 2, 1, 0, 1, 2, 3,
+    5, 4, 3, 2, 1, 0, 1, 2,
+    6, 5, 4, 3, 2, 1, 0, 1,
+    7, 6, 5, 4, 3, 2, 1, 0
+};
+
 U64 fileMasks[64];
 U64 rankMasks[64];
 
@@ -261,6 +280,35 @@ static inline bool insufficientMaterial(Board *board) {
 }
 
 
+static inline bool isMinorPieceEndgame(const Board* board) {
+    U64 whiteMinor = board->bitboards[N] | board->bitboards[B];
+    U64 blackMinor = board->bitboards[n] | board->bitboards[b];
+
+    U64 whiteOther = board->bitboards[P] | board->bitboards[R] | board->bitboards[Q];
+    U64 blackOther = board->bitboards[p] | board->bitboards[r] | board->bitboards[q];
+
+    return whiteOther == 0 && blackOther == 0 &&
+           (whiteMinor || blackMinor); // at least one minor piece on the board
+}
+
+static inline int MinorPieceEvaluation(Board *board, int perspective){
+    int distance = 0;
+
+    int piece = (perspective == white) ? B : b;
+    int opponentKingSquare = getLSBindex(board->bitboards[(perspective == white) ? k : K]);
+    U64 pieceBitboard = board->bitboards[piece];
+    while (pieceBitboard) {
+        int square = getLSBindex(pieceBitboard);
+        bool bishopOnLight = ((1 << square) & LIGHT_SQUARES) != 0;
+        distance += ((bishopOnLight) ? ProximityToLightCorner[opponentKingSquare] : ProximityToDarkCorner[opponentKingSquare]);
+        popBit(pieceBitboard, square);
+    }
+    if (distance == 0)
+        distance = DistanceFromCentre[opponentKingSquare];
+
+    return distance;
+}
+
 static inline int MopUpEvaluation(Board *board, int perspective, int friendlymaterial, int opponentmaterial, float endgameWeight) {
     int score = 0;
 
@@ -269,7 +317,12 @@ static inline int MopUpEvaluation(Board *board, int perspective, int friendlymat
     int opponentKingSquare = getLSBindex(board->bitboards[(perspective == white) ? k : K]);
     int friendlyKingSquare = getLSBindex(board->bitboards[(perspective== white) ? K : k]);
 
-    score += DistanceFromCentre[opponentKingSquare] * 10;
+    if (isMinorPieceEndgame(board)) 
+        score += MinorPieceEvaluation(board, perspective) * 10; // Encourage bishops to control squares near the opponent's king
+    
+    else
+        score += DistanceFromCentre[opponentKingSquare] * 10;
+        
     int distbetweenKings = std::abs((opponentKingSquare / 8) - (friendlyKingSquare / 8)) +
                         std::abs((opponentKingSquare % 8) - (friendlyKingSquare % 8));
     
@@ -328,13 +381,13 @@ static inline int evaluate(Board *board) {
                 case N:
                     mobility = countBits(knightAttacks[square] & ~board->occupancies[white]);
                     mgScore += knightSquareTable[0][square] + mobility * 3;
-                    egScore += knightSquareTable[1][square] + mobility * 5; // encourage more mobility in endgame
+                    egScore += knightSquareTable[1][square] + mobility * 2; // special functions for minor endgames implemented below
                     break;
 
                 case B:
                     mobility = countBits(getBishopAttacks(square, board->occupancies[both]));
                     mgScore += bishopSquareTable[0][square] + mobility * 3;
-                    egScore += bishopSquareTable[1][square] + mobility * 5;
+                    egScore += bishopSquareTable[1][square] + mobility * 2; // special functions for minor endgames implemented below
                     break;
 
                 case R:
@@ -374,7 +427,6 @@ static inline int evaluate(Board *board) {
 
                     piecesAroundKing = countBits(board->occupancies[white] & kingAttacks[square]);
                     mgScore += piecesAroundKing * kingShieldBonus;
-                    egScore += piecesAroundKing * (kingShieldBonus / 2); // Less important in endgame
                     break;
 
                 case p:
@@ -399,13 +451,13 @@ static inline int evaluate(Board *board) {
                 case n:
                     mobility = countBits(knightAttacks[square] & ~board->occupancies[black]);
                     mgScore -= (knightSquareTable[0][mirrorSquare[square]] + mobility * 3);
-                    egScore -= (knightSquareTable[1][mirrorSquare[square]] + mobility * 5); // encourage more mobility in endgame
+                    egScore -= (knightSquareTable[1][mirrorSquare[square]] + mobility * 2); // special functions for minor endgames implemented below
                     break;
 
                 case b:
                     mobility = countBits(getBishopAttacks(square, board->occupancies[both]));
                     mgScore -= (bishopSquareTable[0][mirrorSquare[square]] + mobility * 3);
-                    egScore -= (bishopSquareTable[1][mirrorSquare[square]] + mobility * 5);
+                    egScore -= (bishopSquareTable[1][mirrorSquare[square]] + mobility * 2); // special functions for minor endgames implemented below
                     break;
 
                 case r:
@@ -444,7 +496,6 @@ static inline int evaluate(Board *board) {
                     }
                     piecesAroundKing = countBits(board->occupancies[black] & kingAttacks[square]);
                     mgScore -= piecesAroundKing * kingShieldBonus;
-                    egScore -= piecesAroundKing * (kingShieldBonus / 2); // Less important in endgame
                     break;
             }
             popBit(bitboard, square);

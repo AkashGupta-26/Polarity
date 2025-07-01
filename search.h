@@ -125,6 +125,8 @@ static inline int scoreMove(Board *board, int move) {
     int piece = decodePiece(move); 
     int target = decodeTarget(move);
 
+    int queens = board->bitboards[q] | board->bitboards[Q];
+
     if (scorePrincipalVariation){
         if (PrincipalVariationTable[0][ply] == move) {
             scorePrincipalVariation = 0;
@@ -144,6 +146,9 @@ static inline int scoreMove(Board *board, int move) {
             }
         }
         return MvvLva[piece][capturedPiece] + 10000;
+    }
+    else if (queens && isMoveCheck(board, move)) {
+        return 10000; // High score for moves that give check
     }
     else{
         // score killer moves

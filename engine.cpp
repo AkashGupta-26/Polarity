@@ -213,11 +213,11 @@ int main(){
         return 0; // Exit after UCI initialization
     }
 
-    parseFEN(&board, "8/8/5K2/8/3B4/1b3k2/8/8 b - - 7 68");
+    parseFEN(&board, "8/8/r7/5p1R/4k3/6PK/5P2/8 w - - 0 43");
     generateMoves(&board, &list);
-    printMoveList(&list);
+    printMoveScores(&board, &list);
     printBoard(&board);
-    cout << evaluate(&board); // Initial evaluation
+    //cout << evaluate(&board); // Initial evaluation
 
     delete[] TranspositionTable; // Clean up transposition table
     return 0;

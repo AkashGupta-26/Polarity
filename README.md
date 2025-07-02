@@ -94,6 +94,11 @@ Multiple techniques such as `Null Move Pruning`, `Late Move Reductions`, and `Qu
 ---
 ## Version History
 
+### Polarity V10
+- Added check detection for move ordering, performs worse than V9.
+- -40 elo points than V7.
+- reverted to V9 for now.
+
 ### Polarity V9
 - Allowed Checks to be processed in Quiescence Search.
 - Added back Mobility Bonus for minor pieces in endgame with lesser weights.

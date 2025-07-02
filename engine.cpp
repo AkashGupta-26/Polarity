@@ -213,9 +213,10 @@ int main(){
         return 0; // Exit after UCI initialization
     }
 
-    parseFEN(&board, "8/8/r7/5p1R/4k3/6PK/5P2/8 w - - 0 43");
-    generateMoves(&board, &list);
-    printMoveScores(&board, &list);
+    parseFEN(&board, "8/8/8/8/3n4/8/8/8 w - - 0 1");
+    // generateMoves(&board, &list);
+    // printMoveScores(&board, &list);
+    printBitboard(board.occupancies[both]);
     printBoard(&board);
     //cout << evaluate(&board); // Initial evaluation
 

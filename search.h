@@ -296,6 +296,8 @@ static inline int negamax(Board *board, int alpha, int beta, int depth) {
         return score;
     }
 
+    if (inCheck) depth++;
+
     if (depth == 0)
         return quiescienceSearch(board, alpha, beta);
 
@@ -303,8 +305,6 @@ static inline int negamax(Board *board, int alpha, int beta, int depth) {
         return evaluate(board);
 
     searchedNodes++;
-
-    if (inCheck) depth++;
 
     int legalMoves = 0;
     int movesSearched = 0;
@@ -387,10 +387,6 @@ static inline int negamax(Board *board, int alpha, int beta, int depth) {
         repetitionIndex--;
         takeBack(board, backup);
 
-        if (searchParams->stop) {
-            return alpha; // Stop search if requested
-        }
-
         // Alpha raise logging
         if (score > alpha) {
             hashFlag = hashExact;
@@ -435,6 +431,9 @@ static inline int negamax(Board *board, int alpha, int beta, int depth) {
 
                 return beta;
             }
+        }
+        if (searchParams->stop) {
+            return alpha; // Stop search if requested
         }
     }
 

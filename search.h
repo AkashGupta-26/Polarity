@@ -283,12 +283,14 @@ static inline int negamax(Board *board, int alpha, int beta, int depth) {
 
     if (board->halfMoveClock >= 100) {
         if (inCheck && numLegalMovesInPosition(board) == 0)
-            return -MATESCORE + ply; // Checkmate
-            
+            return -MATEVALUE + ply; // Checkmate
+
         return 0; // Draw by fifty-move rule
     }
 
     int PVnode = (beta - alpha > 1);
+
+    if (inCheck) depth++;
 
     if (!PVnode && ply && (score = readHashEntry(board, &bestMove, alpha, beta, depth, ply)) != noHashEntry) {
         return score;
@@ -301,8 +303,6 @@ static inline int negamax(Board *board, int alpha, int beta, int depth) {
         return evaluate(board);
 
     searchedNodes++;
-
-    if (inCheck) depth++;
 
     int legalMoves = 0;
     int movesSearched = 0;

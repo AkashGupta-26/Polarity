@@ -381,13 +381,13 @@ static inline int evaluate(Board *board) {
                 case N:
                     mobility = countBits(knightAttacks[square] & ~board->occupancies[white]);
                     mgScore += knightSquareTable[0][square] + mobility * 3;
-                    egScore += knightSquareTable[1][square] + mobility * 2; // special functions for minor endgames implemented below
+                    egScore += knightSquareTable[1][square] + mobility * 5; // special functions for minor endgames implemented below
                     break;
 
                 case B:
                     mobility = countBits(getBishopAttacks(square, board->occupancies[both]));
                     mgScore += bishopSquareTable[0][square] + mobility * 3;
-                    egScore += bishopSquareTable[1][square] + mobility * 2; // special functions for minor endgames implemented below
+                    egScore += bishopSquareTable[1][square] + mobility * 5; // special functions for minor endgames implemented below
                     break;
 
                 case R:
@@ -451,13 +451,13 @@ static inline int evaluate(Board *board) {
                 case n:
                     mobility = countBits(knightAttacks[square] & ~board->occupancies[black]);
                     mgScore -= (knightSquareTable[0][mirrorSquare[square]] + mobility * 3);
-                    egScore -= (knightSquareTable[1][mirrorSquare[square]] + mobility * 2); // special functions for minor endgames implemented below
+                    egScore -= (knightSquareTable[1][mirrorSquare[square]] + mobility * 5); // special functions for minor endgames implemented below
                     break;
 
                 case b:
                     mobility = countBits(getBishopAttacks(square, board->occupancies[both]));
                     mgScore -= (bishopSquareTable[0][mirrorSquare[square]] + mobility * 3);
-                    egScore -= (bishopSquareTable[1][mirrorSquare[square]] + mobility * 2); // special functions for minor endgames implemented below
+                    egScore -= (bishopSquareTable[1][mirrorSquare[square]] + mobility * 5); // special functions for minor endgames implemented below
                     break;
 
                 case r:

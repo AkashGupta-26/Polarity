@@ -90,6 +90,67 @@ Multiple techniques such as `Null Move Pruning`, `Late Move Reductions`, and `Qu
 - `Null Move Pruning` is basically evaluating positions after giving your opponent a free move. If the position is still good for us, we may conclude that the move chosen earlier in the tree was not as good and thus we can prune the search tree as our opponent won't chose that move either.
 - `Late Move Reductions` assume that our move ordering is good enough that we can reduce the search depth for moves that are not in the top few moves. This helps to improve the search efficiency by reducing the search depth for less promising moves.
 - We are also using `aspiration windows`, which are narrow windows around the expected value of a position. This helps to reduce the search space and improve the search efficiency as we can prune so many moves. However, if the resulting evaluation was still outside bounds, we will have to re-search the position with a wider window. This follows the idea that proving a move is bad is generally faster than proving a move is good, and thus we can quickly prune the search space, but obviously they may lead to redundant searches.
+
+---
+## Version History
+
+### Polarity V9
+- Added Static Evaluation Pruning (V9a - +70 Elo points than V8).
+- Added Razoring in Search (V9b - +80 Elo points than V8).
+- Allowed checks to be processed in Quiescence Search (V9c - +100 Elo points than V8).
+- +100 Elo points than V8.
+
+### Polarity V8
+- Added Minor Piece Endgame Helper for Bishops.
+- +50 Elo points than V7.
+
+### Polarity V10 (scraped)
+- Added Checks in Move Ordering.
+- Perform Worse than V7.
+- Reverted to V8, with original mobility bonus for minor pieces in endgame.
+
+
+### Polarity V9 (scraped)
+- Allowed Checks to be processed in Quiescence Search.
+- Added back Mobility Bonus for minor pieces in endgame with lesser weights.
+- Performance not stable, sometimes wins against V7 sometimes loses.
+
+### Polarity V8 (scraped)
+- Added Minor Piece Endgame Helper for Bishops.
+- Removed mobility bonus for minor pieces in endgame.
+- -40 Elo points than V7.
+
+### Polarity V7
+- Added Insufficient Material Detection.
+- +30 Elo points than V6.
+
+### Polarity V6
+- Added Mobility Bonus for all pieces to encourage piece activity.
+- Added King Shield Bonus
+- Transposition Table now clears only on UCI new game command.
+- +70 Elo points than V5.
+
+### Polarity V5
+- Added Best Move history and ordering in Transposition Table.
+- +40 Elo points than V4.
+
+### Polarity V4
+- Added Tapered evaluation.
+- MopUp evaluation for endgame checkmates.
+- +50 Elo points than V3.
+
+### Polarity V3
+- Added PeSTO evaluation tables.
+- +80 Elo points than V2.
+
+### Polarity V2
+- Added Passed Pawn bonus and Isolated Pawn penalty.
+- +30 Elo points than V1.
+
+### Polarity V1
+- Initial release with basic evaluation and search.
+- Evaluation based on estimated piece values and piece-square tables.
+
 ---
 ## References
 

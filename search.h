@@ -209,8 +209,8 @@ static inline int numLegalMovesInPosition(Board *board) {
     return legalMoves;
 }
 
-// Quiescence search to handle captures
-static inline int quiescienceSearch(Board *board, int alpha, int beta) {
+// Quiescence search to handle captures and captures that lead to checks
+static inline int quiescenceSearch(Board *board, int alpha, int beta) {
 
     if ((searchedNodes & 2047) == 0) 
         communicate(searchParams); // Communicate with the engine every 2048 nodes
@@ -241,7 +241,7 @@ static inline int quiescienceSearch(Board *board, int alpha, int beta) {
         
         ply++;
         repetitionTable[repetitionIndex++] = board->zobristHash; // Add current position to repetition table
-        int score = -quiescienceSearch(board, -beta, -alpha);
+        int score = -quiescenceSearch(board, -beta, -alpha);
 
         ply--;
         repetitionIndex--; // Remove the position from the repetition table after searching
@@ -276,17 +276,15 @@ static inline int negamax(Board *board, int alpha, int beta, int depth) {
 
     PrincipalVariationLength[ply] = ply;
 
-    if (ply && detectRepetition(board)) {
-
+    if (ply && detectRepetition(board)) 
         return 0;
-    }
 
     int inCheck = isBoardInCheck(board);
 
     if (board->halfMoveClock >= 100) {
-        if (inCheck && numLegalMovesInPosition(board) == 0) {
+        if (inCheck && numLegalMovesInPosition(board) == 0)
             return -MATESCORE + ply; // Checkmate
-        }
+            
         return 0; // Draw by fifty-move rule
     }
 
@@ -297,7 +295,7 @@ static inline int negamax(Board *board, int alpha, int beta, int depth) {
     }
 
     if (depth == 0)
-        return quiescienceSearch(board, alpha, beta);
+        return quiescenceSearch(board, alpha, beta);
 
     if (ply > maxPly - 1)
         return evaluate(board);
@@ -309,6 +307,15 @@ static inline int negamax(Board *board, int alpha, int beta, int depth) {
     int legalMoves = 0;
     int movesSearched = 0;
 
+    int staticEval = evaluate(board);
+
+    // Evaluation Pruning / Static Null Move Pruning
+    if (depth < 3 && !PVnode && !inCheck && abs(beta - 1) > -INFINITY + 100){
+        int evalMargin = 120 * depth;
+        if (staticEval - evalMargin >= beta)
+            return staticEval - evalMargin;
+    }
+
     int OnlyPawnsOnBoard = 1;
     for (int piece = P; piece <= k; piece++) {
         if (piece == p || piece == P || piece == K || piece == k) continue;
@@ -318,6 +325,7 @@ static inline int negamax(Board *board, int alpha, int beta, int depth) {
         }
     }
 
+    // Null move pruning
     if (depth >= 3 && !inCheck && ply && !OnlyPawnsOnBoard) {
         copyBoard(board);
         ply++;
@@ -334,12 +342,29 @@ static inline int negamax(Board *board, int alpha, int beta, int depth) {
         repetitionIndex--;
         takeBack(board, backup);
 
-        if (searchParams->stop) {
+        if (searchParams->stop) 
             return alpha;
-        }
 
-        if (score >= beta) {
+        if (score >= beta)
             return beta;
+    }
+
+    // Razoring
+    if (depth <= 3 && !PVnode && !inCheck){
+        score = staticEval + 125;
+        int newScore;
+
+        if (score < beta){
+            if (depth == 1){
+                newScore = quiescenceSearch(board, alpha, beta);
+                return (newScore > score) ? newScore : score;
+            }
+            score += 175;
+            if (score < beta && depth <= 2) {
+                newScore = quiescenceSearch(board, alpha, beta);
+                if (newScore < beta) 
+                    return (newScore > score) ? newScore : score;
+            }
         }
     }
 

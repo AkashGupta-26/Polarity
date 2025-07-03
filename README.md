@@ -94,6 +94,11 @@ Multiple techniques such as `Null Move Pruning`, `Late Move Reductions`, and `Qu
 ---
 ## Version History
 
+### Polarity V10
+- fixed MATEVALUE bug in 50 move rule detection.
+- incremented depth aobe queiscence search.
+- +35 Elo points than V9.
+
 ### Polarity V9
 - Added Static Evaluation Pruning (V9a - +70 Elo points than V8).
 - Added Razoring in Search (V9b - +80 Elo points than V8).

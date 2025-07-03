@@ -95,16 +95,32 @@ Multiple techniques such as `Null Move Pruning`, `Late Move Reductions`, and `Qu
 ## Version History
 
 ### Polarity V10
-- Added check detection for move ordering, performs worse than V9.
-- -40 elo points than V7.
-- reverted to V9 for now.
+- fixed MATEVALUE bug in 50 move rule detection.
+- incremented depth aobe queiscence search.
+- +35 Elo points than V9.
 
 ### Polarity V9
-- Allowed Checks to be processed in Quiescence Search.
-- Added back Mobility Bonus for minor pieces in endgame with lesser weights.
-- +30 Elo points than V7.
+- Added Static Evaluation Pruning (V9a - +70 Elo points than V8).
+- Added Razoring in Search (V9b - +80 Elo points than V8).
+- Allowed checks to be processed in Quiescence Search (V9c - +100 Elo points than V8).
+- +100 Elo points than V8.
 
 ### Polarity V8
+- Added Minor Piece Endgame Helper for Bishops.
+- +50 Elo points than V7.
+
+### Polarity V10 (scraped)
+- Added Checks in Move Ordering.
+- Perform Worse than V7.
+- Reverted to V8, with original mobility bonus for minor pieces in endgame.
+
+
+### Polarity V9 (scraped)
+- Allowed Checks to be processed in Quiescence Search.
+- Added back Mobility Bonus for minor pieces in endgame with lesser weights.
+- Performance not stable, sometimes wins against V7 sometimes loses.
+
+### Polarity V8 (scraped)
 - Added Minor Piece Endgame Helper for Bishops.
 - Removed mobility bonus for minor pieces in endgame.
 - -40 Elo points than V7.

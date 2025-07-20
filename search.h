@@ -296,8 +296,6 @@ static inline int negamax(Board *board, int alpha, int beta, int depth) {
         return score;
     }
 
-    if (inCheck) depth++;
-
     if (depth == 0)
         return quiescenceSearch(board, alpha, beta);
 

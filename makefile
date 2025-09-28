@@ -5,6 +5,9 @@ OPTFLAGS := -O3 -march=native -flto
 DEBUGFLAGS := -g
 DEPFLAGS := -MMD -MP
 
+# Static linking flags
+STATICFLAGS := -static -static-libgcc -static-libstdc++
+
 # Source and object files
 SRCS := engine.cpp perftValidate.cpp
 OBJS := $(SRCS:.cpp=.o)
@@ -14,17 +17,19 @@ TARGETS := engine perftValidate
 
 # Default target
 all: CXXFLAGS += $(OPTFLAGS)
+all: LDFLAGS += $(STATICFLAGS)
 all: $(TARGETS)
 
 debug: CXXFLAGS += $(DEBUGFLAGS)
+debug: LDFLAGS += $(STATICFLAGS)
 debug: $(TARGETS)
 
 # Build targets
 engine: engine.o
-	$(CXX) $(CXXFLAGS) -o $@ $^
+	$(CXX) $(CXXFLAGS) $(LDFLAGS) -o $@ $^
 
 perftValidate: perftValidate.o
-	$(CXX) $(CXXFLAGS) -o $@ $^
+	$(CXX) $(CXXFLAGS) $(LDFLAGS) -o $@ $^
 
 # Compile .cpp into .o and generate .d files for header tracking
 %.o: %.cpp

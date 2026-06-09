@@ -211,27 +211,27 @@ const int doublePawnPenalty = -10;
 const int isolatedPawnPenalty = -10;
 const int passedPawnBonus[2][8] = {
     {0, 5, 10, 15, 25, 35, 45, 0},
-    {0, 10, 20, 35, 55, 80, 120, 0}
+    {0, 10, 20, 30, 50, 70, 100, 0}
 };
-const int passedPawnFriendlyKingBonus = 5;
-const int passedPawnEnemyKingPenalty = 7;
+const int passedPawnFriendlyKingBonus = 3;
+const int passedPawnEnemyKingPenalty = 5;
 
-const int bishopPairBonus[2] = {30, 50};
-const int tempoBonus = 15;
+const int bishopPairBonus[2] = {25, 45};
+const int tempoBonus = 12;
 
 const int semiOpenFileBonus = 15;
 const int openFileBonus = 20;
 
-const int pawnShieldBonus = 10;
-const int pawnShieldMissingPenalty = -15;
+const int pawnShieldBonus = 8;
+const int pawnShieldMissingPenalty = -10;
 
-const int backwardPawnPenalty[2] = {-10, -15};
+const int backwardPawnPenalty[2] = {-8, -12};
 
-const int rookOn7thBonus[2] = {20, 30};
+const int rookOn7thBonus[2] = {15, 25};
 
-const int knightOutpostBonus[2] = {25, 15};
-const int rookBehindPassedBonus[2] = {15, 25};
-const int connectedPassedBonus[2] = {10, 20};
+const int knightOutpostBonus[2] = {20, 10};
+const int rookBehindPassedBonus[2] = {10, 20};
+const int connectedPassedBonus[2] = {8, 15};
 
 U64 setFileRankMasks(int file, int rank) {
     U64 mask = 0ULL;

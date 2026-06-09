@@ -258,24 +258,42 @@ void initializeTranspositionSize(int MB){
 }
 
 static inline int readHashEntry(Board *board, int* bestMove, int alpha, int beta, int depth, int ply = 0) {
+    extern U64 hashHits, hashExactHits, hashAlphaHits, hashBetaHits, hashMoveOrderHits;
     HashEntry *entry = &TranspositionTable[getTTIndex(board->zobristHash)];
 
-    if (entry->key == board->zobristHash && entry->depth >= depth){
-        int value = entry->value;
+    if (entry->key == board->zobristHash){
+        hashHits++;
+        *bestMove = entry->bestMove;
+        if (entry->bestMove != 0) hashMoveOrderHits++;
 
-        if (value < -MATESCORE) value += ply; // Adjust for mate scores
-        if (value > MATESCORE) value -= ply; // Adjust for mate scores
+        if (entry->depth >= depth){
+            int value = entry->value;
 
-        if (entry->flag == hashExact) return value; // PV node
-        if (entry->flag == hashAlpha && value <= alpha) return alpha; // fails low
-        if (entry->flag == hashBeta && value >= beta) return beta; // fails high
+            if (value < -MATESCORE) value += ply;
+            if (value > MATESCORE) value -= ply;
+
+            if (entry->flag == hashExact) {
+                hashExactHits++;
+                return value;
+            }
+            if (entry->flag == hashAlpha && value <= alpha) {
+                hashAlphaHits++;
+                return alpha;
+            }
+            if (entry->flag == hashBeta && value >= beta) {
+                hashBetaHits++;
+                return beta;
+            }
+        }
     }
-    *bestMove = entry->bestMove;
-    return noHashEntry; // No valid entry found
+    return noHashEntry;
 }
 
 static inline void writeHashEntry(Board *board, int bestMove, int value, int depth, int flag, int ply = 0) {
     HashEntry *entry = &TranspositionTable[getTTIndex(board->zobristHash)];
+
+    if (entry->key == board->zobristHash && entry->depth > depth)
+        return;
 
     if (value < -MATESCORE) value -= ply;
     if (value > MATESCORE) value += ply;

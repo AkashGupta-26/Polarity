@@ -4,6 +4,7 @@
 #include "evaluate.h"
 #include <algorithm>
 #include <fstream>
+#include <iomanip>
 
 // extern std::ofstream logFile;
 
@@ -87,7 +88,14 @@ const int maxPly = 64;
 
 // Search parameters
 int ply; 
-U64 searchedNodes; 
+U64 searchedNodes;
+
+// Hash table statistics
+U64 hashHits = 0;
+U64 hashExactHits = 0;
+U64 hashAlphaHits = 0;
+U64 hashBetaHits = 0;
+U64 hashMoveOrderHits = 0;
 
 // Late Move Reduction (LMR) parameters
 const int FullDepthMoves = 4; // Number of moves to search at full depth
@@ -292,8 +300,16 @@ static inline int negamax(Board *board, int alpha, int beta, int depth) {
 
     if (inCheck) depth++;
 
-    if (!PVnode && ply && (score = readHashEntry(board, &bestMove, alpha, beta, depth, ply)) != noHashEntry) {
-        return score;
+    if (ply && (score = readHashEntry(board, &bestMove, alpha, beta, depth, ply)) != noHashEntry) {
+        if (!PVnode) {
+            return score;
+        }
+        if (abs(score) >= MATEVALUE - maxPly) {
+            return score;
+        }
+        if (score <= alpha - 200 || score >= beta + 200) {
+            return score;
+        }
     }
 
     if (depth == 0)
@@ -486,10 +502,17 @@ void searchPosition(Board *board, SearchUCI *searchparams) {
     followPrincipalVariation = 0;
     scorePrincipalVariation = 0;
 
+    hashHits = 0;
+    hashExactHits = 0;
+    hashAlphaHits = 0;
+    hashBetaHits = 0;
+    hashMoveOrderHits = 0;
+
     int alpha = -INFINITY;
     int beta = INFINITY;
 
     int PrincipalVariationLastIteration[maxPly];
+    int PrincipalVariationLastIterationLength = 0;
     int bestEvaluationPreviousIteration = 0;
     
     memset(PrincipalVariationLength, 0, sizeof(PrincipalVariationLength)); 
@@ -542,13 +565,35 @@ void searchPosition(Board *board, SearchUCI *searchparams) {
                 << " nodes " << searchedNodes << " time " << TIME_IN_MILLISECONDS - searchParams->startTime << " pv ";
 
         for (int i = 0; i < PrincipalVariationLength[0]; i++) {
-            if (PrincipalVariationTable[0][i] == 0) break; // Stop at the end of the principal variation
+            if (PrincipalVariationTable[0][i] == 0) break;
             std::cout << moveToUCI(PrincipalVariationTable[0][i]) << " ";
             PrincipalVariationLastIteration[i] = PrincipalVariationTable[0][i];
         }
+        PrincipalVariationLastIterationLength = PrincipalVariationLength[0];
         std::cout << std::endl;
     }
-    std::cout << "bestmove " << moveToUCI(PrincipalVariationLastIteration[0]) << std::endl;
+
+    U64 totalCutoffs = hashExactHits + hashAlphaHits + hashBetaHits;
+    double hashHitRate = searchedNodes > 0 ? (100.0 * hashHits / searchedNodes) : 0.0;
+    double cutoffRate = hashHits > 0 ? (100.0 * totalCutoffs / hashHits) : 0.0;
+    double moveOrderRate = hashHits > 0 ? (100.0 * hashMoveOrderHits / hashHits) : 0.0;
+
+    std::cout << "info string Hash Stats: "
+              << "Hits=" << hashHits
+              << " (" << std::fixed << std::setprecision(1) << hashHitRate << "%) "
+              << "Exact=" << hashExactHits
+              << " Alpha=" << hashAlphaHits
+              << " Beta=" << hashBetaHits
+              << " Cutoffs=" << totalCutoffs
+              << " (" << cutoffRate << "%) "
+              << "Moves=" << hashMoveOrderHits
+              << " (" << moveOrderRate << "%)" << std::endl;
+
+    if (PrincipalVariationLastIterationLength > 0 && PrincipalVariationLastIteration[0] != 0) {
+        std::cout << "bestmove " << moveToUCI(PrincipalVariationLastIteration[0]) << std::endl;
+    } else {
+        std::cout << "bestmove 0000" << std::endl;
+    }
 }
 
 #endif // SEARCH_H;

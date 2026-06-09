@@ -409,15 +409,15 @@ static inline int negamax(Board *board, int alpha, int beta, int depth) {
         score = staticEval + 125;
         int newScore;
 
-        if (score < beta){
+        if (score < alpha){
             if (depth == 1){
                 newScore = quiescenceSearch(board, alpha, beta);
                 return (newScore > score) ? newScore : score;
             }
             score += 175;
-            if (score < beta && depth <= 2) {
+            if (score < alpha && depth <= 2) {
                 newScore = quiescenceSearch(board, alpha, beta);
-                if (newScore < beta) 
+                if (newScore < alpha) 
                     return (newScore > score) ? newScore : score;
             }
         }
@@ -437,22 +437,9 @@ static inline int negamax(Board *board, int alpha, int beta, int depth) {
         bool isCapture = decodeCapture(move);
         bool isPromotion = decodePromoted(move);
 
-        if (!PVnode && !inCheck && movesSearched > 0) {
-            if (depth <= 4 && !isCapture && !isPromotion &&
-                movesSearched >= lmpThreshold[depth])
-                continue;
-
-            if (depth <= 3 && !isCapture && !isPromotion &&
-                staticEval + futilityMargins[depth] <= alpha)
-                continue;
-
-            if (depth <= 2 && isCapture) {
-                int victim = getCapturedPiece(board, decodeTarget(move));
-                if (victim != none &&
-                    captureValue[victim] + 200 < captureValue[decodePiece(move)])
-                    continue;
-            }
-        }
+        int capturedVictim = none;
+        if (isCapture && !decodeEnPassant(move))
+            capturedVictim = getCapturedPiece(board, decodeTarget(move));
 
         repetitionTable[repetitionIndex++] = board->zobristHash;
         if (makeMove(board, move) == 0) {
@@ -463,11 +450,39 @@ static inline int negamax(Board *board, int alpha, int beta, int depth) {
         ply++;
         legalMoves++;
 
+        bool givesCheck = isBoardInCheck(board);
+
+        if (!PVnode && !inCheck && !givesCheck && movesSearched > 0) {
+            if (depth <= 4 && !isCapture && !isPromotion &&
+                movesSearched >= lmpThreshold[depth]) {
+                ply--;
+                repetitionIndex--;
+                takeBack(board, backup);
+                continue;
+            }
+
+            if (depth <= 3 && !isCapture && !isPromotion &&
+                staticEval + futilityMargins[depth] <= alpha) {
+                ply--;
+                repetitionIndex--;
+                takeBack(board, backup);
+                continue;
+            }
+
+            if (depth <= 2 && isCapture && capturedVictim != none &&
+                captureValue[capturedVictim] + 400 < captureValue[decodePiece(move)]) {
+                ply--;
+                repetitionIndex--;
+                takeBack(board, backup);
+                continue;
+            }
+        }
+
         if (movesSearched == 0) {
             score = -negamax(board, -beta, -alpha, depth - 1);
         } else {
             if (movesSearched >= FullDepthMoves && depth >= ReductionLimit &&
-                !inCheck && !isCapture && !isPromotion) {
+                !inCheck && !givesCheck && !isCapture && !isPromotion) {
                 score = -negamax(board, -alpha - 1, -alpha, depth - 1 - lmrReduction(depth, movesSearched));
             } else {
                 score = alpha + 1;
@@ -567,11 +582,15 @@ void searchPosition(Board *board, SearchUCI *searchparams) {
 
         int score = negamax(board, alpha, beta, curDepth);
 
+        if ((searchParams->stop || searchParams->quit) &&
+            ((score <= alpha) || (score >= beta))) {
+            break;
+        }
+
         if ((score <= alpha) || (score >= beta)) {
-            alpha = -INFINITY; // Reset alpha if score is out of bounds
-            beta = INFINITY; // Reset beta if score is out of bounds
-            curDepth--; // reset depth to re-search with a wider score bandwith
-            //std:: cout << "info Full Search Re-Start at depth " << curDepth + 1 << std::endl;
+            alpha = -INFINITY;
+            beta = INFINITY;
+            curDepth--;
             continue;
         }
         // aspiration window
@@ -583,9 +602,10 @@ void searchPosition(Board *board, SearchUCI *searchparams) {
            Since it works, I am not touching it*/
 
         if (searchParams->stop || searchParams->quit) {
-            if (abs(bestEvaluationPreviousIteration - score) > 100 || MATEVALUE - abs(score) < 20){
+            if (PrincipalVariationLastIterationLength > 0 &&
+                (abs(bestEvaluationPreviousIteration - score) > 100 || MATEVALUE - abs(score) < 20)){
                 std::cout << "info unfinished search instability" << std::endl;
-                break; // Dont use this search result if the evaluation changed too much or Mate found on board on stopping search forcefully
+                break;
             }
         }
 

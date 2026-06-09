@@ -299,7 +299,7 @@ static inline int MinorPieceEvaluation(Board *board, int perspective){
     U64 pieceBitboard = board->bitboards[piece];
     while (pieceBitboard) {
         int square = getLSBindex(pieceBitboard);
-        bool bishopOnLight = ((1 << square) & LIGHT_SQUARES) != 0;
+        bool bishopOnLight = ((1ULL << square) & LIGHT_SQUARES) != 0;
         distance += ((bishopOnLight) ? ProximityToLightCorner[opponentKingSquare] : ProximityToDarkCorner[opponentKingSquare]);
         popBit(pieceBitboard, square);
     }

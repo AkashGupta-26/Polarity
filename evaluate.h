@@ -229,6 +229,10 @@ const int backwardPawnPenalty[2] = {-10, -15};
 
 const int rookOn7thBonus[2] = {20, 30};
 
+const int knightOutpostBonus[2] = {25, 15};
+const int rookBehindPassedBonus[2] = {15, 25};
+const int connectedPassedBonus[2] = {10, 20};
+
 U64 setFileRankMasks(int file, int rank) {
     U64 mask = 0ULL;
     
@@ -399,13 +403,33 @@ static inline int evaluate(Board *board) {
                         int enemyDist = std::abs(enemyKingSq / 8 - rank) + std::abs(enemyKingSq % 8 - square % 8);
                         egScore += (7 - friendlyDist) * passedPawnFriendlyKingBonus;
                         egScore += enemyDist * passedPawnEnemyKingPenalty;
+
+                        U64 adjacentPassedFriendly = board->bitboards[P] & isolatedPawnMasks[square];
+                        while (adjacentPassedFriendly) {
+                            int adjSq = getLSBindex(adjacentPassedFriendly);
+                            if (((board->bitboards[p] | (board->bitboards[P] & fileMasks[adjSq])) & passedPawnMasks[white][adjSq]) == 0) {
+                                mgScore += connectedPassedBonus[0];
+                                egScore += connectedPassedBonus[1];
+                                break;
+                            }
+                            popBit(adjacentPassedFriendly, adjSq);
+                        }
                     }
                     break;
 
                 case N:
                     mobility = countBits(knightAttacks[square] & ~board->occupancies[white]);
                     mgScore += knightSquareTable[0][square] + mobility * 3;
-                    egScore += knightSquareTable[1][square] + mobility * 5; // special functions for minor endgames implemented below
+                    egScore += knightSquareTable[1][square] + mobility * 5;
+
+                    {
+                        int knightRank = square / 8;
+                        if (knightRank >= 3 && knightRank <= 5 &&
+                            (isolatedPawnMasks[square] & passedPawnMasks[white][square] & board->bitboards[p]) == 0) {
+                            mgScore += knightOutpostBonus[0];
+                            egScore += knightOutpostBonus[1];
+                        }
+                    }
                     break;
 
                 case B:
@@ -433,6 +457,20 @@ static inline int evaluate(Board *board) {
                         if (enemyKingRank == 7 || (board->bitboards[p] & rankMasks[48])) {
                             mgScore += rookOn7thBonus[0];
                             egScore += rookOn7thBonus[1];
+                        }
+                    }
+
+                    {
+                        U64 friendlyPawnsOnFile = board->bitboards[P] & fileMasks[square];
+                        while (friendlyPawnsOnFile) {
+                            int pawnSq = getLSBindex(friendlyPawnsOnFile);
+                            if (((board->bitboards[p] | (board->bitboards[P] & fileMasks[pawnSq])) & passedPawnMasks[white][pawnSq]) == 0 &&
+                                square / 8 < pawnSq / 8) {
+                                mgScore += rookBehindPassedBonus[0];
+                                egScore += rookBehindPassedBonus[1];
+                                break;
+                            }
+                            popBit(friendlyPawnsOnFile, pawnSq);
                         }
                     }
                     break;
@@ -488,13 +526,33 @@ static inline int evaluate(Board *board) {
                         int enemyDist = std::abs(enemyKingSq / 8 - (square / 8)) + std::abs(enemyKingSq % 8 - square % 8);
                         egScore -= (7 - friendlyDist) * passedPawnFriendlyKingBonus;
                         egScore -= enemyDist * passedPawnEnemyKingPenalty;
+
+                        U64 adjacentPassedFriendly = board->bitboards[p] & isolatedPawnMasks[square];
+                        while (adjacentPassedFriendly) {
+                            int adjSq = getLSBindex(adjacentPassedFriendly);
+                            if (((board->bitboards[P] | (board->bitboards[p] & fileMasks[adjSq])) & passedPawnMasks[black][adjSq]) == 0) {
+                                mgScore -= connectedPassedBonus[0];
+                                egScore -= connectedPassedBonus[1];
+                                break;
+                            }
+                            popBit(adjacentPassedFriendly, adjSq);
+                        }
                     }
                     break;
 
                 case n:
                     mobility = countBits(knightAttacks[square] & ~board->occupancies[black]);
                     mgScore -= (knightSquareTable[0][mirrorSquare[square]] + mobility * 3);
-                    egScore -= (knightSquareTable[1][mirrorSquare[square]] + mobility * 5); // special functions for minor endgames implemented below
+                    egScore -= (knightSquareTable[1][mirrorSquare[square]] + mobility * 5);
+
+                    {
+                        int knightRank = square / 8;
+                        if (knightRank >= 2 && knightRank <= 4 &&
+                            (isolatedPawnMasks[square] & passedPawnMasks[black][square] & board->bitboards[P]) == 0) {
+                            mgScore -= knightOutpostBonus[0];
+                            egScore -= knightOutpostBonus[1];
+                        }
+                    }
                     break;
 
                 case b:
@@ -522,6 +580,20 @@ static inline int evaluate(Board *board) {
                         if (enemyKingRank == 0 || (board->bitboards[P] & rankMasks[8])) {
                             mgScore -= rookOn7thBonus[0];
                             egScore -= rookOn7thBonus[1];
+                        }
+                    }
+
+                    {
+                        U64 friendlyPawnsOnFile = board->bitboards[p] & fileMasks[square];
+                        while (friendlyPawnsOnFile) {
+                            int pawnSq = getLSBindex(friendlyPawnsOnFile);
+                            if (((board->bitboards[P] | (board->bitboards[p] & fileMasks[pawnSq])) & passedPawnMasks[black][pawnSq]) == 0 &&
+                                square / 8 > pawnSq / 8) {
+                                mgScore -= rookBehindPassedBonus[0];
+                                egScore -= rookBehindPassedBonus[1];
+                                break;
+                            }
+                            popBit(friendlyPawnsOnFile, pawnSq);
                         }
                     }
                     break;

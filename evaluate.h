@@ -209,7 +209,15 @@ U64 passedPawnMasks[2][64];
 
 const int doublePawnPenalty = -10;
 const int isolatedPawnPenalty = -10;
-const int passedPawnBonus[8] = {0, 5, 10, 20, 30, 45, 60, 0};
+const int passedPawnBonus[2][8] = {
+    {0, 5, 10, 15, 25, 35, 45, 0},
+    {0, 10, 20, 35, 55, 80, 120, 0}
+};
+const int passedPawnFriendlyKingBonus = 5;
+const int passedPawnEnemyKingPenalty = 7;
+
+const int bishopPairBonus[2] = {30, 50};
+const int tempoBonus = 15;
 
 const int semiOpenFileBonus = 15;
 const int openFileBonus = 20;
@@ -373,8 +381,16 @@ static inline int evaluate(Board *board) {
                     }
 
                     if (((board->bitboards[p] | (board->bitboards[P] & fileMasks[square])) & passedPawnMasks[white][square]) == 0) {
-                        mgScore += passedPawnBonus[square / 8];
-                        egScore += passedPawnBonus[square / 8];
+                        int rank = square / 8;
+                        mgScore += passedPawnBonus[0][rank];
+                        egScore += passedPawnBonus[1][rank];
+
+                        int friendlyKingSq = getLSBindex(board->bitboards[K]);
+                        int enemyKingSq = getLSBindex(board->bitboards[k]);
+                        int friendlyDist = std::abs(friendlyKingSq / 8 - rank) + std::abs(friendlyKingSq % 8 - square % 8);
+                        int enemyDist = std::abs(enemyKingSq / 8 - rank) + std::abs(enemyKingSq % 8 - square % 8);
+                        egScore += (7 - friendlyDist) * passedPawnFriendlyKingBonus;
+                        egScore += enemyDist * passedPawnEnemyKingPenalty;
                     }
                     break;
 
@@ -443,8 +459,16 @@ static inline int evaluate(Board *board) {
                     }
 
                     if (((board->bitboards[P] | (board->bitboards[p] & fileMasks[square])) & passedPawnMasks[black][square]) == 0) {
-                        mgScore -= passedPawnBonus[mirrorSquare[square] / 8];
-                        egScore -= passedPawnBonus[mirrorSquare[square] / 8];
+                        int rank = mirrorSquare[square] / 8;
+                        mgScore -= passedPawnBonus[0][rank];
+                        egScore -= passedPawnBonus[1][rank];
+
+                        int friendlyKingSq = getLSBindex(board->bitboards[k]);
+                        int enemyKingSq = getLSBindex(board->bitboards[K]);
+                        int friendlyDist = std::abs(friendlyKingSq / 8 - (square / 8)) + std::abs(friendlyKingSq % 8 - square % 8);
+                        int enemyDist = std::abs(enemyKingSq / 8 - (square / 8)) + std::abs(enemyKingSq % 8 - square % 8);
+                        egScore -= (7 - friendlyDist) * passedPawnFriendlyKingBonus;
+                        egScore -= enemyDist * passedPawnEnemyKingPenalty;
                     }
                     break;
 
@@ -502,6 +526,15 @@ static inline int evaluate(Board *board) {
         }
     }
 
+    if (countBits(board->bitboards[B]) >= 2) {
+        mgScore += bishopPairBonus[0];
+        egScore += bishopPairBonus[1];
+    }
+    if (countBits(board->bitboards[b]) >= 2) {
+        mgScore -= bishopPairBonus[0];
+        egScore -= bishopPairBonus[1];
+    }
+
     if (phase <= 3 && insufficientMaterial(board)) {
         return 0; // Draw by insufficient material
     }
@@ -515,6 +548,7 @@ static inline int evaluate(Board *board) {
     egScore += mopUpScore;
     phase = std::min(24, phase);
     score = (mgScore * phase + egScore * (24 - phase)) / 24;
+    score += (board->sideToMove == white) ? tempoBonus : -tempoBonus;
     return board->sideToMove == white ? score : -score;
 }
 

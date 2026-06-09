@@ -206,7 +206,6 @@ int main(){
     SearchUCI searchParams;
     searchParams.depth = 10; // Default search depth
     int uciMode = 1;
-    MoveList list;
     if (uciMode) {
         uci(&board, &searchParams);
         delete[] TranspositionTable; // Clean up transposition table
@@ -214,6 +213,7 @@ int main(){
     }
 
     parseFEN(&board, "8/8/8/8/3n4/8/8/8 w - - 0 1");
+    // MoveList list;
     // generateMoves(&board, &list);
     // printMoveScores(&board, &list);
     printBitboard(board.occupancies[both]);

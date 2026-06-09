@@ -49,7 +49,7 @@ void read_input(SearchUCI *searchParams)
             }
             else if (std::strncmp(input, "stop", 4) == 0)
             {
-                searchParams->quit = 1;
+                searchParams->stop = 1;
             }
         }
     }
@@ -87,14 +87,47 @@ const int maxPly = 64;
 
 // Search parameters
 int ply; 
-U64 searchedNodes; 
+U64 searchedNodes;
+
+U64 hashHits = 0;
+U64 hashExactHits = 0;
+U64 hashAlphaHits = 0;
+U64 hashBetaHits = 0;
+U64 hashMoveOrderHits = 0;
 
 // Late Move Reduction (LMR) parameters
 const int FullDepthMoves = 4; // Number of moves to search at full depth
 const int ReductionLimit = 3; // Maximum reduction depth
 
 // Null Move pruning parameters
-const int NullMoveReduction = 2; // Reduction depth for null move pruning
+const int NullMoveReduction = 2;
+
+// Futility / late-move pruning margins (indexed by remaining depth)
+static const int futilityMargins[5] = {0, 100, 160, 250, 350};
+static const int lmpThreshold[6] = {0, 4, 7, 12, 20, 30};
+
+// Middlegame piece values for capture/delta pruning
+static const int captureValue[12] = {
+    82, 337, 365, 477, 1025, 0,
+    82, 337, 365, 477, 1025, 0
+};
+
+static inline int getCapturedPiece(const Board *board, int target) {
+    int startPiece = (board->sideToMove == white) ? p : P;
+    int endPiece = (board->sideToMove == white) ? k : K;
+    for (int bbPiece = startPiece; bbPiece <= endPiece; ++bbPiece) {
+        if (getBit(board->bitboards[bbPiece], target))
+            return bbPiece;
+    }
+    return none;
+}
+
+static inline int lmrReduction(int depth, int movesSearched) {
+    int reduction = 1 + movesSearched / 6 + depth / 4;
+    if (reduction > depth - 1) reduction = depth - 1;
+    if (reduction > 3) reduction = 3;
+    return reduction;
+}
 
 int killerMoves[2][maxPly];
 int historyMoves[12][64];
@@ -133,7 +166,7 @@ static inline int scoreMove(Board *board, int move) {
     }
 
     if (decodeCapture(move)){
-        int capturedPiece;
+        int capturedPiece = P;
         if (decodeEnPassant(move)) return MvvLva[P][p];
         int startPiece = (board->sideToMove == white) ? p : P;
         int endPiece = (board->sideToMove == white) ? k : K;
@@ -236,8 +269,19 @@ static inline int quiescenceSearch(Board *board, int alpha, int beta) {
     copyBoard(board); // Backup the current board state
 
     for (int count = 0; count < moveList.count; ++count) {
-        if (makeMove(board, moveList.moves[count], OnlyCaptures) == 0)
-            continue; // Skip illegal moves
+        int move = moveList.moves[count];
+
+        if (decodeCapture(move)) {
+            int victim = getCapturedPiece(board, decodeTarget(move));
+            int gain = (victim != none) ? captureValue[victim] : 82;
+            if (decodePromoted(move))
+                gain = captureValue[(board->sideToMove == white) ? Q : q];
+            if (eval + gain + 200 < alpha)
+                continue;
+        }
+
+        if (makeMove(board, move, OnlyCaptures) == 0)
+            continue;
         
         ply++;
         repetitionTable[repetitionIndex++] = board->zobristHash; // Add current position to repetition table
@@ -292,8 +336,13 @@ static inline int negamax(Board *board, int alpha, int beta, int depth) {
 
     if (inCheck) depth++;
 
-    if (!PVnode && ply && (score = readHashEntry(board, &bestMove, alpha, beta, depth, ply)) != noHashEntry) {
-        return score;
+    if (ply && (score = readHashEntry(board, &bestMove, alpha, beta, depth, ply)) != noHashEntry) {
+        if (!PVnode)
+            return score;
+        if (abs(score) >= MATEVALUE - maxPly)
+            return score;
+        if (score <= alpha - 200 || score >= beta + 200)
+            return score;
     }
 
     if (depth == 0)
@@ -308,6 +357,12 @@ static inline int negamax(Board *board, int alpha, int beta, int depth) {
     int movesSearched = 0;
 
     int staticEval = evaluate(board);
+
+    // Internal iterative deepening when no hash move is available
+    if (depth >= 5 && bestMove == 0 && !inCheck) {
+        negamax(board, alpha, beta, depth - 2);
+        readHashEntry(board, &bestMove, -INFINITY, INFINITY, 1, ply);
+    }
 
     // Evaluation Pruning / Static Null Move Pruning
     if (depth < 3 && !PVnode && !inCheck && abs(beta - 1) > -INFINITY + 100){
@@ -378,13 +433,32 @@ static inline int negamax(Board *board, int alpha, int beta, int depth) {
     copyBoard(board);
 
     for (int count = 0; count < moveList.count; ++count) {
+        int move = moveList.moves[count];
+        bool isCapture = decodeCapture(move);
+        bool isPromotion = decodePromoted(move);
+
+        if (!PVnode && !inCheck && movesSearched > 0) {
+            if (depth <= 4 && !isCapture && !isPromotion &&
+                movesSearched >= lmpThreshold[depth])
+                continue;
+
+            if (depth <= 3 && !isCapture && !isPromotion &&
+                staticEval + futilityMargins[depth] <= alpha)
+                continue;
+
+            if (depth <= 2 && isCapture) {
+                int victim = getCapturedPiece(board, decodeTarget(move));
+                if (victim != none &&
+                    captureValue[victim] + 200 < captureValue[decodePiece(move)])
+                    continue;
+            }
+        }
+
         repetitionTable[repetitionIndex++] = board->zobristHash;
-        if (makeMove(board, moveList.moves[count]) == 0) {
+        if (makeMove(board, move) == 0) {
             repetitionIndex--;
             continue;
         }
-
-        //currentLine[ply] = moveList.moves[count]; // Store move in current line
 
         ply++;
         legalMoves++;
@@ -393,8 +467,8 @@ static inline int negamax(Board *board, int alpha, int beta, int depth) {
             score = -negamax(board, -beta, -alpha, depth - 1);
         } else {
             if (movesSearched >= FullDepthMoves && depth >= ReductionLimit &&
-                !inCheck && !decodeCapture(moveList.moves[count]) && !decodePromoted(moveList.moves[count])) {
-                score = -negamax(board, -alpha - 1, -alpha, depth - 2);
+                !inCheck && !isCapture && !isPromotion) {
+                score = -negamax(board, -alpha - 1, -alpha, depth - 1 - lmrReduction(depth, movesSearched));
             } else {
                 score = alpha + 1;
             }
@@ -412,53 +486,36 @@ static inline int negamax(Board *board, int alpha, int beta, int depth) {
         repetitionIndex--;
         takeBack(board, backup);
 
-        // Alpha raise logging
         if (score > alpha) {
             hashFlag = hashExact;
 
-            bestMove = moveList.moves[count];
+            bestMove = move;
 
-            if (!decodeCapture(moveList.moves[count])) {
-                historyMoves[decodePiece(moveList.moves[count])][decodeTarget(moveList.moves[count])] += depth;
+            if (!isCapture) {
+                historyMoves[decodePiece(move)][decodeTarget(move)] += depth;
             }
 
             alpha = score;
 
-            PrincipalVariationTable[ply][ply] = moveList.moves[count];
+            PrincipalVariationTable[ply][ply] = move;
             for (int nextPly = ply + 1; nextPly < PrincipalVariationLength[ply + 1]; nextPly++) {
                 PrincipalVariationTable[ply][nextPly] = PrincipalVariationTable[ply + 1][nextPly];
             }
             PrincipalVariationLength[ply] = PrincipalVariationLength[ply + 1];
 
-            // 📝 Log Alpha Raise
-            // logFile << "Alpha raised at ply " << ply << " depth " << depth
-            //         << " score " << score << " move " << moveToUCI(moveList.moves[count])
-            //         << " line: ";
-            // for (int i = 0; i <= ply; ++i)
-            //     logFile << moveToUCI(currentLine[i]) << " ";
-            // logFile << std::endl;
-
             if (score >= beta) {
                 writeHashEntry(board, bestMove, beta, depth, hashBeta, ply);
 
-                if (!decodeCapture(moveList.moves[count])) {
+                if (!isCapture) {
                     killerMoves[1][ply] = killerMoves[0][ply];
-                    killerMoves[0][ply] = moveList.moves[count];
+                    killerMoves[0][ply] = move;
                 }
-
-                // 📝 Log Beta Cutoff
-                // logFile << "Beta cutoff at ply " << ply << " depth " << depth
-                //         << " score " << score << " move " << moveToUCI(moveList.moves[count])
-                //         << " line: ";
-                // for (int i = 0; i <= ply; ++i)
-                //     logFile << moveToUCI(currentLine[i]) << " ";
-                // logFile << std::endl;
 
                 return beta;
             }
         }
         if (searchParams->stop) {
-            return alpha; // Stop search if requested
+            return alpha;
         }
     }
 
@@ -490,6 +547,7 @@ void searchPosition(Board *board, SearchUCI *searchparams) {
     int beta = INFINITY;
 
     int PrincipalVariationLastIteration[maxPly];
+    int PrincipalVariationLastIterationLength = 0;
     int bestEvaluationPreviousIteration = 0;
     
     memset(PrincipalVariationLength, 0, sizeof(PrincipalVariationLength)); 
@@ -542,13 +600,19 @@ void searchPosition(Board *board, SearchUCI *searchparams) {
                 << " nodes " << searchedNodes << " time " << TIME_IN_MILLISECONDS - searchParams->startTime << " pv ";
 
         for (int i = 0; i < PrincipalVariationLength[0]; i++) {
-            if (PrincipalVariationTable[0][i] == 0) break; // Stop at the end of the principal variation
+            if (PrincipalVariationTable[0][i] == 0) break;
             std::cout << moveToUCI(PrincipalVariationTable[0][i]) << " ";
             PrincipalVariationLastIteration[i] = PrincipalVariationTable[0][i];
         }
+        PrincipalVariationLastIterationLength = PrincipalVariationLength[0];
         std::cout << std::endl;
     }
-    std::cout << "bestmove " << moveToUCI(PrincipalVariationLastIteration[0]) << std::endl;
+
+    if (PrincipalVariationLastIterationLength > 0 && PrincipalVariationLastIteration[0] != 0) {
+        std::cout << "bestmove " << moveToUCI(PrincipalVariationLastIteration[0]) << std::endl;
+    } else {
+        std::cout << "bestmove 0000" << std::endl;
+    }
 }
 
 #endif // SEARCH_H;

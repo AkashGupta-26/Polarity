@@ -631,7 +631,37 @@ void searchPosition(Board *board, SearchUCI *searchparams) {
     if (PrincipalVariationLastIterationLength > 0 && PrincipalVariationLastIteration[0] != 0) {
         std::cout << "bestmove " << moveToUCI(PrincipalVariationLastIteration[0]) << std::endl;
     } else {
-        std::cout << "bestmove 0000" << std::endl;
+        int fallbackMove = 0;
+
+        int ttMove = 0;
+        readHashEntry(board, &ttMove, -INFINITY, INFINITY, 0);
+        if (ttMove != 0) {
+            copyBoard(board);
+            if (makeMove(board, ttMove) != 0)
+                fallbackMove = ttMove;
+            takeBack(board, backup);
+        }
+
+        if (fallbackMove == 0) {
+            MoveList fallbackList;
+            generateMoves(board, &fallbackList);
+            sortMoves(board, &fallbackList);
+            copyBoard(board);
+            for (int i = 0; i < fallbackList.count; i++) {
+                if (makeMove(board, fallbackList.moves[i]) == 0) {
+                    takeBack(board, backup);
+                    continue;
+                }
+                takeBack(board, backup);
+                fallbackMove = fallbackList.moves[i];
+                break;
+            }
+        }
+
+        if (fallbackMove != 0)
+            std::cout << "bestmove " << moveToUCI(fallbackMove) << std::endl;
+        else
+            std::cout << "bestmove 0000" << std::endl;
     }
 }
 

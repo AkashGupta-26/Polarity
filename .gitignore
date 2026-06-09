@@ -62,3 +62,10 @@ search_log.txt
 helper.cpp
 helperFile.py
 blunders.txt
+
+# Built binaries (no extension)
+engine
+engine-main
+engine-search
+perftValidate
+match

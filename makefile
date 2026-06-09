@@ -9,11 +9,11 @@ DEPFLAGS := -MMD -MP
 STATICFLAGS := -static -static-libgcc -static-libstdc++
 
 # Source and object files
-SRCS := engine.cpp perftValidate.cpp
+SRCS := engine.cpp perftValidate.cpp match.cpp
 OBJS := $(SRCS:.cpp=.o)
 DEPS := $(SRCS:.cpp=.d)
 
-TARGETS := engine perftValidate
+TARGETS := engine perftValidate match
 
 # Default target
 all: CXXFLAGS += $(OPTFLAGS)
@@ -30,6 +30,9 @@ engine: engine.o
 
 perftValidate: perftValidate.o
 	$(CXX) $(CXXFLAGS) $(LDFLAGS) -o $@ $^
+
+match: match.o
+	$(CXX) $(CXXFLAGS) $(LDFLAGS) -pthread -o $@ $^
 
 # Compile .cpp into .o and generate .d files for header tracking
 %.o: %.cpp

@@ -15,6 +15,10 @@ DEPS := $(SRCS:.cpp=.d)
 
 TARGETS := engine perftValidate
 
+TUNER_SRC := tuner.cpp
+TUNER_OBJ := tuner.o
+TUNER_DEP := tuner.d
+
 # Default target
 all: CXXFLAGS += $(OPTFLAGS)
 all: LDFLAGS += $(STATICFLAGS)
@@ -31,15 +35,21 @@ engine: engine.o
 perftValidate: perftValidate.o
 	$(CXX) $(CXXFLAGS) $(LDFLAGS) -o $@ $^
 
+tuner: CXXFLAGS += $(OPTFLAGS) -DTUNING_MODE
+tuner: LDFLAGS += $(STATICFLAGS)
+tuner: $(TUNER_OBJ)
+	$(CXX) $(CXXFLAGS) $(LDFLAGS) -o $@ $^
+
 # Compile .cpp into .o and generate .d files for header tracking
 %.o: %.cpp
 	$(CXX) $(CXXFLAGS) $(DEPFLAGS) -c $< -o $@
 
 # Include dependency files if they exist
 -include $(DEPS)
+-include $(TUNER_DEP)
 
 # Clean build artifacts
 clean:
-	rm -f *.o *.d $(TARGETS)
+	rm -f *.o *.d $(TARGETS) tuner
 
 .PHONY: all debug clean

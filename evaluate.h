@@ -10,6 +10,12 @@
 #define MG 0
 #define EG 1
 
+#ifdef TUNING_MODE
+#define EVAL_PARAM
+#else
+#define EVAL_PARAM const
+#endif
+
 const int mirrorSquare[] = {
     a8, b8, c8, d8, e8, f8, g8, h8,
     a7, b7, c7, d7, e7, f7, g7, h7,
@@ -207,37 +213,37 @@ U64 isolatedPawnMasks[64];
 U64 passedPawnMasks[2][64];
 
 
-const int doublePawnPenalty = -10;
-const int isolatedPawnPenalty = -10;
-const int passedPawnBonus[2][8] = {
-    {0, 5, 10, 15, 25, 35, 45, 0},
-    {0, 10, 20, 30, 50, 70, 100, 0}
+EVAL_PARAM int doublePawnPenalty = -14;
+EVAL_PARAM int isolatedPawnPenalty = -20;
+EVAL_PARAM int passedPawnBonus[2][8] = {
+    {0, 5, 5, 10, 33, 50, 63, 0},
+    {0, 5, 10, 37, 62, 69, 95, 0}
 };
-const int passedPawnFriendlyKingBonus = 3;
-const int passedPawnEnemyKingPenalty = 5;
+EVAL_PARAM int passedPawnFriendlyKingBonus = 5;
+EVAL_PARAM int passedPawnEnemyKingPenalty = 8;
 
-const int bishopPairBonus[2] = {25, 45};
-const int tempoBonus = 12;
+EVAL_PARAM int bishopPairBonus[2] = {42, 63};
+EVAL_PARAM int tempoBonus = 9;
 
-const int semiOpenFileBonus = 15;
-const int openFileBonus = 20;
+EVAL_PARAM int semiOpenFileBonus = 15;
+EVAL_PARAM int openFileBonus = 22;
 
-const int pawnShieldBonus = 8;
-const int pawnShieldMissingPenalty = -10;
+EVAL_PARAM int pawnShieldBonus = 6;
+EVAL_PARAM int pawnShieldMissingPenalty = -9;
 
-const int backwardPawnPenalty[2] = {-8, -12};
+EVAL_PARAM int backwardPawnPenalty[2] = {-6, -19};
 
-const int rookOn7thBonus[2] = {15, 25};
+EVAL_PARAM int rookOn7thBonus[2] = {20, 31};
 
-const int knightOutpostBonus[2] = {20, 10};
-const int rookBehindPassedBonus[2] = {10, 20};
-const int connectedPassedBonus[2] = {8, 15};
+EVAL_PARAM int knightOutpostBonus[2] = {30, 15};
+EVAL_PARAM int rookBehindPassedBonus[2] = {13, 13};
+EVAL_PARAM int connectedPassedBonus[2] = {10, 10};
 
-const int badBishopPenalty[2] = {-3, -5};
-const int blockedPasserPenalty[2] = {-5, -15};
+EVAL_PARAM int badBishopPenalty[2] = {-3, -7};
+EVAL_PARAM int blockedPasserPenalty[2] = {-12, -23};
 
-const int kingAttackWeights[] = {0, 2, 2, 3, 5, 0, 0, 2, 2, 3, 5, 0};
-const int kingSafetyTable[] = {
+EVAL_PARAM int kingAttackWeights[] = {0, 2, 2, 3, 5, 0, 0, 2, 2, 3, 5, 0};
+EVAL_PARAM int kingSafetyTable[] = {
     0,   0,   2,   5,  10,  16,  23,  32,  42,  54,
    67,  82,  98, 115, 133, 153, 174, 196, 220, 245,
   271, 298, 327, 357, 388, 400, 400, 400, 400, 400

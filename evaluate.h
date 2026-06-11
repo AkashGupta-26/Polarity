@@ -334,12 +334,9 @@ static inline int MopUpEvaluation(Board *board, int perspective, int friendlymat
     int opponentKingSquare = getLSBindex(board->bitboards[(perspective == white) ? k : K]);
     int friendlyKingSquare = getLSBindex(board->bitboards[(perspective== white) ? K : k]);
 
-    if (isMinorPieceEndgame(board)) 
-        score += MinorPieceEvaluation(board, perspective) * 10; // Encourage bishops to control squares near the opponent's king
-    
-    else
-        score += DistanceFromCentre[opponentKingSquare] * 10;
-        
+    if (isMinorPieceEndgame(board))
+        score += MinorPieceEvaluation(board, perspective) * 10;
+
     int distbetweenKings = std::abs((opponentKingSquare / 8) - (friendlyKingSquare / 8)) +
                         std::abs((opponentKingSquare % 8) - (friendlyKingSquare % 8));
     
@@ -356,6 +353,8 @@ static inline int evaluate(Board *board) {
     int phase = 0;
     int whitePhase = 0;
     int blackPhase = 0;
+    int whiteMaterial = 0;
+    int blackMaterial = 0;
     U64 bitboard;
     int square;
     int numPawnsOnFile;
@@ -370,6 +369,11 @@ static inline int evaluate(Board *board) {
             mgScore += pieceValue[0][piece];
             egScore += pieceValue[1][piece];
 
+            if (piece < 6)
+                whiteMaterial += pieceValue[EG][piece];
+            else
+                blackMaterial -= pieceValue[EG][piece];
+
             phase += phaseScore[piece];
             whitePhase += (piece < 6) ? phaseScore[piece] : 0;
             blackPhase += (piece >= 6) ? phaseScore[piece] : 0;
@@ -380,8 +384,15 @@ static inline int evaluate(Board *board) {
                     egScore += pawnSquareTable[1][square];
 
                     numPawnsOnFile = countBits(board->bitboards[P] & fileMasks[square]);
-                    mgScore += (numPawnsOnFile - 1) * doublePawnPenalty;
-                    egScore += (numPawnsOnFile - 1) * doublePawnPenalty;
+                    if (numPawnsOnFile > 1) {
+                        for (int r = square / 8 - 1; r >= 0; --r) {
+                            if (board->bitboards[P] & (1ULL << (r * 8 + square % 8))) {
+                                mgScore += doublePawnPenalty;
+                                egScore += doublePawnPenalty;
+                                break;
+                            }
+                        }
+                    }
 
                     if ((board->bitboards[P] & isolatedPawnMasks[square]) == 0) {
                         mgScore += isolatedPawnPenalty;
@@ -405,14 +416,20 @@ static inline int evaluate(Board *board) {
                         egScore += enemyDist * passedPawnEnemyKingPenalty;
 
                         U64 adjacentPassedFriendly = board->bitboards[P] & isolatedPawnMasks[square];
+                        bool hasConnectedPartner = false;
+                        bool isConnectedLeader = true;
                         while (adjacentPassedFriendly) {
                             int adjSq = getLSBindex(adjacentPassedFriendly);
                             if (((board->bitboards[p] | (board->bitboards[P] & fileMasks[adjSq])) & passedPawnMasks[white][adjSq]) == 0) {
-                                mgScore += connectedPassedBonus[0];
-                                egScore += connectedPassedBonus[1];
-                                break;
+                                hasConnectedPartner = true;
+                                if (adjSq / 8 > square / 8)
+                                    isConnectedLeader = false;
                             }
                             popBit(adjacentPassedFriendly, adjSq);
+                        }
+                        if (hasConnectedPartner && isConnectedLeader) {
+                            mgScore += connectedPassedBonus[0];
+                            egScore += connectedPassedBonus[1];
                         }
                     }
                     break;
@@ -503,8 +520,15 @@ static inline int evaluate(Board *board) {
                     egScore -= pawnSquareTable[1][mirrorSquare[square]];
 
                     numPawnsOnFile = countBits(board->bitboards[p] & fileMasks[square]);
-                    mgScore -= (numPawnsOnFile - 1) * doublePawnPenalty;
-                    egScore -= (numPawnsOnFile - 1) * doublePawnPenalty;
+                    if (numPawnsOnFile > 1) {
+                        for (int r = square / 8 + 1; r < 8; ++r) {
+                            if (board->bitboards[p] & (1ULL << (r * 8 + square % 8))) {
+                                mgScore -= doublePawnPenalty;
+                                egScore -= doublePawnPenalty;
+                                break;
+                            }
+                        }
+                    }
 
                     if ((board->bitboards[p] & isolatedPawnMasks[square]) == 0) {
                         mgScore -= isolatedPawnPenalty;
@@ -528,14 +552,20 @@ static inline int evaluate(Board *board) {
                         egScore -= enemyDist * passedPawnEnemyKingPenalty;
 
                         U64 adjacentPassedFriendly = board->bitboards[p] & isolatedPawnMasks[square];
+                        bool hasConnectedPartner = false;
+                        bool isConnectedLeader = true;
                         while (adjacentPassedFriendly) {
                             int adjSq = getLSBindex(adjacentPassedFriendly);
                             if (((board->bitboards[P] | (board->bitboards[p] & fileMasks[adjSq])) & passedPawnMasks[black][adjSq]) == 0) {
-                                mgScore -= connectedPassedBonus[0];
-                                egScore -= connectedPassedBonus[1];
-                                break;
+                                hasConnectedPartner = true;
+                                if (adjSq / 8 < square / 8)
+                                    isConnectedLeader = false;
                             }
                             popBit(adjacentPassedFriendly, adjSq);
+                        }
+                        if (hasConnectedPartner && isConnectedLeader) {
+                            mgScore -= connectedPassedBonus[0];
+                            egScore -= connectedPassedBonus[1];
                         }
                     }
                     break;
@@ -641,8 +671,8 @@ static inline int evaluate(Board *board) {
     float whiteEndGamePhase = 1 - std::min(1.0f, float(whitePhase) / float(endGamePhaseMaterialScore));
     float blackEndGamePhase = 1 - std::min(1.0f, float(blackPhase) / float(endGamePhaseMaterialScore));
 
-    int mopUpScore = MopUpEvaluation(board, white, whitePhase, blackPhase, blackEndGamePhase) 
-                    - MopUpEvaluation(board, black, blackPhase, whitePhase, whiteEndGamePhase); 
+    int mopUpScore = MopUpEvaluation(board, white, whiteMaterial, blackMaterial, blackEndGamePhase) 
+                    - MopUpEvaluation(board, black, blackMaterial, whiteMaterial, whiteEndGamePhase); 
 
     egScore += mopUpScore;
     phase = std::min(24, phase);

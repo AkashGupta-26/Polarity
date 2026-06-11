@@ -4,6 +4,7 @@
 #include "evaluate.h"
 #include <algorithm>
 #include <fstream>
+#include <iomanip>
 
 // extern std::ofstream logFile;
 
@@ -49,7 +50,7 @@ void read_input(SearchUCI *searchParams)
             }
             else if (std::strncmp(input, "stop", 4) == 0)
             {
-                searchParams->quit = 1;
+                searchParams->stop = 1;
             }
         }
     }
@@ -87,14 +88,47 @@ const int maxPly = 64;
 
 // Search parameters
 int ply; 
-U64 searchedNodes; 
+U64 searchedNodes;
+
+U64 hashHits = 0;
+U64 hashExactHits = 0;
+U64 hashAlphaHits = 0;
+U64 hashBetaHits = 0;
+U64 hashMoveOrderHits = 0;
 
 // Late Move Reduction (LMR) parameters
 const int FullDepthMoves = 4; // Number of moves to search at full depth
 const int ReductionLimit = 3; // Maximum reduction depth
 
 // Null Move pruning parameters
-const int NullMoveReduction = 2; // Reduction depth for null move pruning
+const int NullMoveReduction = 2;
+
+// Futility / late-move pruning margins (indexed by remaining depth)
+static const int futilityMargins[5] = {0, 100, 160, 250, 350};
+static const int lmpThreshold[6] = {0, 4, 7, 12, 20, 30};
+
+// Middlegame piece values for capture/delta pruning
+static const int captureValue[12] = {
+    82, 337, 365, 477, 1025, 0,
+    82, 337, 365, 477, 1025, 0
+};
+
+static inline int getCapturedPiece(const Board *board, int target) {
+    int startPiece = (board->sideToMove == white) ? p : P;
+    int endPiece = (board->sideToMove == white) ? k : K;
+    for (int bbPiece = startPiece; bbPiece <= endPiece; ++bbPiece) {
+        if (getBit(board->bitboards[bbPiece], target))
+            return bbPiece;
+    }
+    return none;
+}
+
+static inline int lmrReduction(int depth, int movesSearched) {
+    int reduction = 1 + movesSearched / 6 + depth / 4;
+    if (reduction > depth - 1) reduction = depth - 1;
+    if (reduction > 3) reduction = 3;
+    return reduction;
+}
 
 int killerMoves[2][maxPly];
 int historyMoves[12][64];
@@ -133,7 +167,7 @@ static inline int scoreMove(Board *board, int move) {
     }
 
     if (decodeCapture(move)){
-        int capturedPiece;
+        int capturedPiece = P;
         if (decodeEnPassant(move)) return MvvLva[P][p];
         int startPiece = (board->sideToMove == white) ? p : P;
         int endPiece = (board->sideToMove == white) ? k : K;
@@ -236,8 +270,19 @@ static inline int quiescenceSearch(Board *board, int alpha, int beta) {
     copyBoard(board); // Backup the current board state
 
     for (int count = 0; count < moveList.count; ++count) {
-        if (makeMove(board, moveList.moves[count], OnlyCaptures) == 0)
-            continue; // Skip illegal moves
+        int move = moveList.moves[count];
+
+        if (decodeCapture(move)) {
+            int victim = getCapturedPiece(board, decodeTarget(move));
+            int gain = (victim != none) ? captureValue[victim] : 82;
+            if (decodePromoted(move))
+                gain = captureValue[(board->sideToMove == white) ? Q : q];
+            if (eval + gain + 200 < alpha)
+                continue;
+        }
+
+        if (makeMove(board, move, OnlyCaptures) == 0)
+            continue;
         
         ply++;
         repetitionTable[repetitionIndex++] = board->zobristHash; // Add current position to repetition table
@@ -292,8 +337,13 @@ static inline int negamax(Board *board, int alpha, int beta, int depth) {
 
     if (inCheck) depth++;
 
-    if (!PVnode && ply && (score = readHashEntry(board, &bestMove, alpha, beta, depth, ply)) != noHashEntry) {
-        return score;
+    if (ply && (score = readHashEntry(board, &bestMove, alpha, beta, depth, ply)) != noHashEntry) {
+        if (!PVnode)
+            return score;
+        if (abs(score) >= MATEVALUE - maxPly)
+            return score;
+        if (score <= alpha - 200 || score >= beta + 200)
+            return score;
     }
 
     if (depth == 0)
@@ -308,6 +358,12 @@ static inline int negamax(Board *board, int alpha, int beta, int depth) {
     int movesSearched = 0;
 
     int staticEval = evaluate(board);
+
+    // Internal iterative deepening when no hash move is available
+    if (depth >= 5 && bestMove == 0 && !inCheck) {
+        negamax(board, alpha, beta, depth - 2);
+        readHashEntry(board, &bestMove, -INFINITY, INFINITY, 1, ply);
+    }
 
     // Evaluation Pruning / Static Null Move Pruning
     if (depth < 3 && !PVnode && !inCheck && abs(beta - 1) > -INFINITY + 100){
@@ -354,15 +410,15 @@ static inline int negamax(Board *board, int alpha, int beta, int depth) {
         score = staticEval + 125;
         int newScore;
 
-        if (score < beta){
+        if (score < alpha){
             if (depth == 1){
                 newScore = quiescenceSearch(board, alpha, beta);
                 return (newScore > score) ? newScore : score;
             }
             score += 175;
-            if (score < beta && depth <= 2) {
+            if (score < alpha && depth <= 2) {
                 newScore = quiescenceSearch(board, alpha, beta);
-                if (newScore < beta) 
+                if (newScore < alpha) 
                     return (newScore > score) ? newScore : score;
             }
         }
@@ -378,23 +434,57 @@ static inline int negamax(Board *board, int alpha, int beta, int depth) {
     copyBoard(board);
 
     for (int count = 0; count < moveList.count; ++count) {
+        int move = moveList.moves[count];
+        bool isCapture = decodeCapture(move);
+        bool isPromotion = decodePromoted(move);
+
+        int capturedVictim = none;
+        if (isCapture && !decodeEnPassant(move))
+            capturedVictim = getCapturedPiece(board, decodeTarget(move));
+
         repetitionTable[repetitionIndex++] = board->zobristHash;
-        if (makeMove(board, moveList.moves[count]) == 0) {
+        if (makeMove(board, move) == 0) {
             repetitionIndex--;
             continue;
         }
 
-        //currentLine[ply] = moveList.moves[count]; // Store move in current line
-
         ply++;
         legalMoves++;
+
+        bool givesCheck = isBoardInCheck(board);
+
+        if (!PVnode && !inCheck && !givesCheck && movesSearched > 0) {
+            if (depth <= 4 && !isCapture && !isPromotion &&
+                movesSearched >= lmpThreshold[depth]) {
+                ply--;
+                repetitionIndex--;
+                takeBack(board, backup);
+                continue;
+            }
+
+            if (depth <= 3 && !isCapture && !isPromotion &&
+                staticEval + futilityMargins[depth] <= alpha) {
+                ply--;
+                repetitionIndex--;
+                takeBack(board, backup);
+                continue;
+            }
+
+            if (depth <= 2 && isCapture && capturedVictim != none &&
+                captureValue[capturedVictim] + 400 < captureValue[decodePiece(move)]) {
+                ply--;
+                repetitionIndex--;
+                takeBack(board, backup);
+                continue;
+            }
+        }
 
         if (movesSearched == 0) {
             score = -negamax(board, -beta, -alpha, depth - 1);
         } else {
             if (movesSearched >= FullDepthMoves && depth >= ReductionLimit &&
-                !inCheck && !decodeCapture(moveList.moves[count]) && !decodePromoted(moveList.moves[count])) {
-                score = -negamax(board, -alpha - 1, -alpha, depth - 2);
+                !inCheck && !givesCheck && !isCapture && !isPromotion) {
+                score = -negamax(board, -alpha - 1, -alpha, depth - 1 - lmrReduction(depth, movesSearched));
             } else {
                 score = alpha + 1;
             }
@@ -412,53 +502,36 @@ static inline int negamax(Board *board, int alpha, int beta, int depth) {
         repetitionIndex--;
         takeBack(board, backup);
 
-        // Alpha raise logging
         if (score > alpha) {
             hashFlag = hashExact;
 
-            bestMove = moveList.moves[count];
+            bestMove = move;
 
-            if (!decodeCapture(moveList.moves[count])) {
-                historyMoves[decodePiece(moveList.moves[count])][decodeTarget(moveList.moves[count])] += depth;
+            if (!isCapture) {
+                historyMoves[decodePiece(move)][decodeTarget(move)] += depth;
             }
 
             alpha = score;
 
-            PrincipalVariationTable[ply][ply] = moveList.moves[count];
+            PrincipalVariationTable[ply][ply] = move;
             for (int nextPly = ply + 1; nextPly < PrincipalVariationLength[ply + 1]; nextPly++) {
                 PrincipalVariationTable[ply][nextPly] = PrincipalVariationTable[ply + 1][nextPly];
             }
             PrincipalVariationLength[ply] = PrincipalVariationLength[ply + 1];
 
-            // 📝 Log Alpha Raise
-            // logFile << "Alpha raised at ply " << ply << " depth " << depth
-            //         << " score " << score << " move " << moveToUCI(moveList.moves[count])
-            //         << " line: ";
-            // for (int i = 0; i <= ply; ++i)
-            //     logFile << moveToUCI(currentLine[i]) << " ";
-            // logFile << std::endl;
-
             if (score >= beta) {
                 writeHashEntry(board, bestMove, beta, depth, hashBeta, ply);
 
-                if (!decodeCapture(moveList.moves[count])) {
+                if (!isCapture) {
                     killerMoves[1][ply] = killerMoves[0][ply];
-                    killerMoves[0][ply] = moveList.moves[count];
+                    killerMoves[0][ply] = move;
                 }
-
-                // 📝 Log Beta Cutoff
-                // logFile << "Beta cutoff at ply " << ply << " depth " << depth
-                //         << " score " << score << " move " << moveToUCI(moveList.moves[count])
-                //         << " line: ";
-                // for (int i = 0; i <= ply; ++i)
-                //     logFile << moveToUCI(currentLine[i]) << " ";
-                // logFile << std::endl;
 
                 return beta;
             }
         }
         if (searchParams->stop) {
-            return alpha; // Stop search if requested
+            return alpha;
         }
     }
 
@@ -486,10 +559,17 @@ void searchPosition(Board *board, SearchUCI *searchparams) {
     followPrincipalVariation = 0;
     scorePrincipalVariation = 0;
 
+    hashHits = 0;
+    hashExactHits = 0;
+    hashAlphaHits = 0;
+    hashBetaHits = 0;
+    hashMoveOrderHits = 0;
+
     int alpha = -INFINITY;
     int beta = INFINITY;
 
     int PrincipalVariationLastIteration[maxPly];
+    int PrincipalVariationLastIterationLength = 0;
     int bestEvaluationPreviousIteration = 0;
     
     memset(PrincipalVariationLength, 0, sizeof(PrincipalVariationLength)); 
@@ -509,11 +589,15 @@ void searchPosition(Board *board, SearchUCI *searchparams) {
 
         int score = negamax(board, alpha, beta, curDepth);
 
+        if ((searchParams->stop || searchParams->quit) &&
+            ((score <= alpha) || (score >= beta))) {
+            break;
+        }
+
         if ((score <= alpha) || (score >= beta)) {
-            alpha = -INFINITY; // Reset alpha if score is out of bounds
-            beta = INFINITY; // Reset beta if score is out of bounds
-            curDepth--; // reset depth to re-search with a wider score bandwith
-            //std:: cout << "info Full Search Re-Start at depth " << curDepth + 1 << std::endl;
+            alpha = -INFINITY;
+            beta = INFINITY;
+            curDepth--;
             continue;
         }
         // aspiration window
@@ -525,9 +609,10 @@ void searchPosition(Board *board, SearchUCI *searchparams) {
            Since it works, I am not touching it*/
 
         if (searchParams->stop || searchParams->quit) {
-            if (abs(bestEvaluationPreviousIteration - score) > 100 || MATEVALUE - abs(score) < 20){
+            if (PrincipalVariationLastIterationLength > 0 &&
+                (abs(bestEvaluationPreviousIteration - score) > 100 || MATEVALUE - abs(score) < 20)){
                 std::cout << "info unfinished search instability" << std::endl;
-                break; // Dont use this search result if the evaluation changed too much or Mate found on board on stopping search forcefully
+                break;
             }
         }
 
@@ -542,13 +627,65 @@ void searchPosition(Board *board, SearchUCI *searchparams) {
                 << " nodes " << searchedNodes << " time " << TIME_IN_MILLISECONDS - searchParams->startTime << " pv ";
 
         for (int i = 0; i < PrincipalVariationLength[0]; i++) {
-            if (PrincipalVariationTable[0][i] == 0) break; // Stop at the end of the principal variation
+            if (PrincipalVariationTable[0][i] == 0) break;
             std::cout << moveToUCI(PrincipalVariationTable[0][i]) << " ";
             PrincipalVariationLastIteration[i] = PrincipalVariationTable[0][i];
         }
+        PrincipalVariationLastIterationLength = PrincipalVariationLength[0];
         std::cout << std::endl;
     }
-    std::cout << "bestmove " << moveToUCI(PrincipalVariationLastIteration[0]) << std::endl;
+
+    U64 totalCutoffs = hashExactHits + hashAlphaHits + hashBetaHits;
+    double hashHitRate = searchedNodes > 0 ? (100.0 * hashHits / searchedNodes) : 0.0;
+    double cutoffRate = hashHits > 0 ? (100.0 * totalCutoffs / hashHits) : 0.0;
+    double moveOrderRate = hashHits > 0 ? (100.0 * hashMoveOrderHits / hashHits) : 0.0;
+
+    std::cout << "info string Hash Stats: "
+              << "Hits=" << hashHits
+              << " (" << std::fixed << std::setprecision(1) << hashHitRate << "%) "
+              << "Exact=" << hashExactHits
+              << " Alpha=" << hashAlphaHits
+              << " Beta=" << hashBetaHits
+              << " Cutoffs=" << totalCutoffs
+              << " (" << cutoffRate << "%) "
+              << "Moves=" << hashMoveOrderHits
+              << " (" << moveOrderRate << "%)" << std::endl;
+
+    if (PrincipalVariationLastIterationLength > 0 && PrincipalVariationLastIteration[0] != 0) {
+        std::cout << "bestmove " << moveToUCI(PrincipalVariationLastIteration[0]) << std::endl;
+    } else {
+        int fallbackMove = 0;
+
+        int ttMove = 0;
+        readHashEntry(board, &ttMove, -INFINITY, INFINITY, 0);
+        if (ttMove != 0) {
+            copyBoard(board);
+            if (makeMove(board, ttMove) != 0)
+                fallbackMove = ttMove;
+            takeBack(board, backup);
+        }
+
+        if (fallbackMove == 0) {
+            MoveList fallbackList;
+            generateMoves(board, &fallbackList);
+            sortMoves(board, &fallbackList);
+            copyBoard(board);
+            for (int i = 0; i < fallbackList.count; i++) {
+                if (makeMove(board, fallbackList.moves[i]) == 0) {
+                    takeBack(board, backup);
+                    continue;
+                }
+                takeBack(board, backup);
+                fallbackMove = fallbackList.moves[i];
+                break;
+            }
+        }
+
+        if (fallbackMove != 0)
+            std::cout << "bestmove " << moveToUCI(fallbackMove) << std::endl;
+        else
+            std::cout << "bestmove 0000" << std::endl;
+    }
 }
 
 #endif // SEARCH_H;

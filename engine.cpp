@@ -92,7 +92,7 @@ void parseGo(Board *board, const string &input, SearchUCI *searchParams) {
             time = stoi(input.substr(wtimePos + 6));
         }
         if (wincPos != string::npos) {
-            inc = stoi(input.substr(bincPos + 5));
+            inc = stoi(input.substr(wincPos + 5));
         }
     } 
     else {
@@ -119,7 +119,8 @@ void parseGo(Board *board, const string &input, SearchUCI *searchParams) {
 
     if (time != -1){
         searchParams->timedGame = 1;
-        time /= movestogo; // Calculate time per move
+        time /= movestogo;
+        time += inc;
         time -= 10;
     }
 

@@ -233,6 +233,13 @@ const int knightOutpostBonus[2] = {20, 10};
 const int rookBehindPassedBonus[2] = {10, 20};
 const int connectedPassedBonus[2] = {8, 15};
 
+const int kingAttackWeights[] = {0, 2, 2, 3, 5, 0, 0, 2, 2, 3, 5, 0};
+const int kingSafetyTable[] = {
+    0,   0,   2,   5,  10,  16,  23,  32,  42,  54,
+   67,  82,  98, 115, 133, 153, 174, 196, 220, 245,
+  271, 298, 327, 357, 388, 400, 400, 400, 400, 400
+};
+
 U64 setFileRankMasks(int file, int rank) {
     U64 mask = 0ULL;
     
@@ -362,6 +369,13 @@ static inline int evaluate(Board *board) {
     int numPawnsOnFile;
     int mobility;
 
+    int whiteKingSq = getLSBindex(board->bitboards[K]);
+    int blackKingSq = getLSBindex(board->bitboards[k]);
+    U64 whiteKingZone = kingAttacks[whiteKingSq] | (1ULL << whiteKingSq);
+    U64 blackKingZone = kingAttacks[blackKingSq] | (1ULL << blackKingSq);
+    int whiteKingAttackWeight = 0, blackKingAttackWeight = 0;
+    int whiteKingAttackerCount = 0, blackKingAttackerCount = 0;
+
     for (int piece = P; piece <= k; ++piece) {
         bitboard = board->bitboards[piece];
         while (bitboard) {
@@ -435,6 +449,11 @@ static inline int evaluate(Board *board) {
                     mgScore += knightSquareTable[0][square] + mobility * 3;
                     egScore += knightSquareTable[1][square] + mobility * 5;
 
+                    if (knightAttacks[square] & blackKingZone) {
+                        whiteKingAttackWeight += 2;
+                        whiteKingAttackerCount++;
+                    }
+
                     {
                         int knightRank = square / 8;
                         if (knightRank >= 3 && knightRank <= 5 &&
@@ -446,15 +465,29 @@ static inline int evaluate(Board *board) {
                     break;
 
                 case B:
-                    mobility = countBits(getBishopAttacks(square, board->occupancies[both]));
-                    mgScore += bishopSquareTable[0][square] + mobility * 3;
-                    egScore += bishopSquareTable[1][square] + mobility * 5; // special functions for minor endgames implemented below
+                    {
+                        U64 attacks = getBishopAttacks(square, board->occupancies[both]);
+                        mobility = countBits(attacks);
+                        mgScore += bishopSquareTable[0][square] + mobility * 3;
+                        egScore += bishopSquareTable[1][square] + mobility * 5;
+                        if (attacks & blackKingZone) {
+                            whiteKingAttackWeight += 2;
+                            whiteKingAttackerCount++;
+                        }
+                    }
                     break;
 
                 case R:
-                    mobility = countBits(getRookAttacks(square, board->occupancies[both]));
-                    mgScore += rookSquareTable[0][square] + mobility * 3;
-                    egScore += rookSquareTable[1][square] + mobility * 5;
+                    {
+                        U64 attacks = getRookAttacks(square, board->occupancies[both]);
+                        mobility = countBits(attacks);
+                        mgScore += rookSquareTable[0][square] + mobility * 3;
+                        egScore += rookSquareTable[1][square] + mobility * 5;
+                        if (attacks & blackKingZone) {
+                            whiteKingAttackWeight += 3;
+                            whiteKingAttackerCount++;
+                        }
+                    }
 
                     if ((board->bitboards[P] & fileMasks[square]) == 0) {
                         mgScore += semiOpenFileBonus;
@@ -489,9 +522,16 @@ static inline int evaluate(Board *board) {
                     break;
 
                 case Q:
-                    mobility = countBits(getQueenAttacks(square, board->occupancies[both]));
-                    mgScore += queenSquareTable[0][square] + mobility * 3;
-                    egScore += queenSquareTable[1][square] + mobility * 5; // encourage more mobility in endgame
+                    {
+                        U64 attacks = getQueenAttacks(square, board->occupancies[both]);
+                        mobility = countBits(attacks);
+                        mgScore += queenSquareTable[0][square] + mobility * 3;
+                        egScore += queenSquareTable[1][square] + mobility * 5;
+                        if (attacks & blackKingZone) {
+                            whiteKingAttackWeight += 5;
+                            whiteKingAttackerCount++;
+                        }
+                    }
                     break;
 
                 case K:
@@ -565,6 +605,11 @@ static inline int evaluate(Board *board) {
                     mgScore -= (knightSquareTable[0][mirrorSquare[square]] + mobility * 3);
                     egScore -= (knightSquareTable[1][mirrorSquare[square]] + mobility * 5);
 
+                    if (knightAttacks[square] & whiteKingZone) {
+                        blackKingAttackWeight += 2;
+                        blackKingAttackerCount++;
+                    }
+
                     {
                         int knightRank = square / 8;
                         if (knightRank >= 2 && knightRank <= 4 &&
@@ -576,15 +621,29 @@ static inline int evaluate(Board *board) {
                     break;
 
                 case b:
-                    mobility = countBits(getBishopAttacks(square, board->occupancies[both]));
-                    mgScore -= (bishopSquareTable[0][mirrorSquare[square]] + mobility * 3);
-                    egScore -= (bishopSquareTable[1][mirrorSquare[square]] + mobility * 5); // special functions for minor endgames implemented below
+                    {
+                        U64 attacks = getBishopAttacks(square, board->occupancies[both]);
+                        mobility = countBits(attacks);
+                        mgScore -= (bishopSquareTable[0][mirrorSquare[square]] + mobility * 3);
+                        egScore -= (bishopSquareTable[1][mirrorSquare[square]] + mobility * 5);
+                        if (attacks & whiteKingZone) {
+                            blackKingAttackWeight += 2;
+                            blackKingAttackerCount++;
+                        }
+                    }
                     break;
 
                 case r:
-                    mobility = countBits(getRookAttacks(square, board->occupancies[both]));
-                    mgScore -= (rookSquareTable[0][mirrorSquare[square]] + mobility * 3);
-                    egScore -= (rookSquareTable[1][mirrorSquare[square]] + mobility * 5);
+                    {
+                        U64 attacks = getRookAttacks(square, board->occupancies[both]);
+                        mobility = countBits(attacks);
+                        mgScore -= (rookSquareTable[0][mirrorSquare[square]] + mobility * 3);
+                        egScore -= (rookSquareTable[1][mirrorSquare[square]] + mobility * 5);
+                        if (attacks & whiteKingZone) {
+                            blackKingAttackWeight += 3;
+                            blackKingAttackerCount++;
+                        }
+                    }
 
                     if ((board->bitboards[p] & fileMasks[square]) == 0) {
                         mgScore -= semiOpenFileBonus;
@@ -619,9 +678,16 @@ static inline int evaluate(Board *board) {
                     break;
                 
                 case q:
-                    mobility = countBits(getQueenAttacks(square, board->occupancies[both]));
-                    mgScore -= (queenSquareTable[0][mirrorSquare[square]] + mobility * 3);
-                    egScore -= (queenSquareTable[1][mirrorSquare[square]] + mobility * 5); // encourage more mobility in endgame
+                    {
+                        U64 attacks = getQueenAttacks(square, board->occupancies[both]);
+                        mobility = countBits(attacks);
+                        mgScore -= (queenSquareTable[0][mirrorSquare[square]] + mobility * 3);
+                        egScore -= (queenSquareTable[1][mirrorSquare[square]] + mobility * 5);
+                        if (attacks & whiteKingZone) {
+                            blackKingAttackWeight += 5;
+                            blackKingAttackerCount++;
+                        }
+                    }
                     break;
 
                 case k:
@@ -652,6 +718,15 @@ static inline int evaluate(Board *board) {
     if (countBits(board->bitboards[b]) >= 2) {
         mgScore -= bishopPairBonus[0];
         egScore -= bishopPairBonus[1];
+    }
+
+    if (whiteKingAttackerCount >= 2) {
+        int idx = std::min(whiteKingAttackWeight, 29);
+        mgScore += kingSafetyTable[idx];
+    }
+    if (blackKingAttackerCount >= 2) {
+        int idx = std::min(blackKingAttackWeight, 29);
+        mgScore -= kingSafetyTable[idx];
     }
 
     if (phase <= 3 && insufficientMaterial(board)) {

@@ -233,6 +233,9 @@ const int knightOutpostBonus[2] = {20, 10};
 const int rookBehindPassedBonus[2] = {10, 20};
 const int connectedPassedBonus[2] = {8, 15};
 
+const int badBishopPenalty[2] = {-3, -5};
+const int blockedPasserPenalty[2] = {-5, -15};
+
 const int kingAttackWeights[] = {0, 2, 2, 3, 5, 0, 0, 2, 2, 3, 5, 0};
 const int kingSafetyTable[] = {
     0,   0,   2,   5,  10,  16,  23,  32,  42,  54,
@@ -431,6 +434,11 @@ static inline int evaluate(Board *board) {
                         egScore += (7 - friendlyDist) * passedPawnFriendlyKingBonus;
                         egScore += enemyDist * passedPawnEnemyKingPenalty;
 
+                        if (square + 8 < 64 && (board->occupancies[black] & (1ULL << (square + 8)))) {
+                            mgScore += blockedPasserPenalty[0];
+                            egScore += blockedPasserPenalty[1];
+                        }
+
                         U64 adjacentPassedFriendly = board->bitboards[P] & isolatedPawnMasks[square];
                         while (adjacentPassedFriendly) {
                             int adjSq = getLSBindex(adjacentPassedFriendly);
@@ -474,6 +482,10 @@ static inline int evaluate(Board *board) {
                             whiteKingAttackWeight += 2;
                             whiteKingAttackerCount++;
                         }
+                        U64 sameColorSquares = ((1ULL << square) & LIGHT_SQUARES) ? LIGHT_SQUARES : DARK_SQUARES;
+                        int pawnsOnColor = countBits(board->bitboards[P] & sameColorSquares);
+                        mgScore += pawnsOnColor * badBishopPenalty[0];
+                        egScore += pawnsOnColor * badBishopPenalty[1];
                     }
                     break;
 
@@ -587,6 +599,11 @@ static inline int evaluate(Board *board) {
                         egScore -= (7 - friendlyDist) * passedPawnFriendlyKingBonus;
                         egScore -= enemyDist * passedPawnEnemyKingPenalty;
 
+                        if (square - 8 >= 0 && (board->occupancies[white] & (1ULL << (square - 8)))) {
+                            mgScore -= blockedPasserPenalty[0];
+                            egScore -= blockedPasserPenalty[1];
+                        }
+
                         U64 adjacentPassedFriendly = board->bitboards[p] & isolatedPawnMasks[square];
                         while (adjacentPassedFriendly) {
                             int adjSq = getLSBindex(adjacentPassedFriendly);
@@ -630,6 +647,10 @@ static inline int evaluate(Board *board) {
                             blackKingAttackWeight += 2;
                             blackKingAttackerCount++;
                         }
+                        U64 sameColorSquares = ((1ULL << square) & LIGHT_SQUARES) ? LIGHT_SQUARES : DARK_SQUARES;
+                        int pawnsOnColor = countBits(board->bitboards[p] & sameColorSquares);
+                        mgScore -= pawnsOnColor * badBishopPenalty[0];
+                        egScore -= pawnsOnColor * badBishopPenalty[1];
                     }
                     break;
 

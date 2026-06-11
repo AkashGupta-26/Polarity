@@ -336,6 +336,8 @@ static inline int MopUpEvaluation(Board *board, int perspective, int friendlymat
 
     if (isMinorPieceEndgame(board))
         score += MinorPieceEvaluation(board, perspective) * 10;
+    else
+        score += DistanceFromCentre[opponentKingSquare] * 10;
 
     int distbetweenKings = std::abs((opponentKingSquare / 8) - (friendlyKingSquare / 8)) +
                         std::abs((opponentKingSquare % 8) - (friendlyKingSquare % 8));
@@ -416,20 +418,14 @@ static inline int evaluate(Board *board) {
                         egScore += enemyDist * passedPawnEnemyKingPenalty;
 
                         U64 adjacentPassedFriendly = board->bitboards[P] & isolatedPawnMasks[square];
-                        bool hasConnectedPartner = false;
-                        bool isConnectedLeader = true;
                         while (adjacentPassedFriendly) {
                             int adjSq = getLSBindex(adjacentPassedFriendly);
                             if (((board->bitboards[p] | (board->bitboards[P] & fileMasks[adjSq])) & passedPawnMasks[white][adjSq]) == 0) {
-                                hasConnectedPartner = true;
-                                if (adjSq / 8 > square / 8)
-                                    isConnectedLeader = false;
+                                mgScore += connectedPassedBonus[0];
+                                egScore += connectedPassedBonus[1];
+                                break;
                             }
                             popBit(adjacentPassedFriendly, adjSq);
-                        }
-                        if (hasConnectedPartner && isConnectedLeader) {
-                            mgScore += connectedPassedBonus[0];
-                            egScore += connectedPassedBonus[1];
                         }
                     }
                     break;
@@ -552,20 +548,14 @@ static inline int evaluate(Board *board) {
                         egScore -= enemyDist * passedPawnEnemyKingPenalty;
 
                         U64 adjacentPassedFriendly = board->bitboards[p] & isolatedPawnMasks[square];
-                        bool hasConnectedPartner = false;
-                        bool isConnectedLeader = true;
                         while (adjacentPassedFriendly) {
                             int adjSq = getLSBindex(adjacentPassedFriendly);
                             if (((board->bitboards[P] | (board->bitboards[p] & fileMasks[adjSq])) & passedPawnMasks[black][adjSq]) == 0) {
-                                hasConnectedPartner = true;
-                                if (adjSq / 8 < square / 8)
-                                    isConnectedLeader = false;
+                                mgScore -= connectedPassedBonus[0];
+                                egScore -= connectedPassedBonus[1];
+                                break;
                             }
                             popBit(adjacentPassedFriendly, adjSq);
-                        }
-                        if (hasConnectedPartner && isConnectedLeader) {
-                            mgScore -= connectedPassedBonus[0];
-                            egScore -= connectedPassedBonus[1];
                         }
                     }
                     break;

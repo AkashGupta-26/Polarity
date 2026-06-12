@@ -132,6 +132,9 @@ static inline int lmrReduction(int depth, int movesSearched) {
 
 int killerMoves[2][maxPly];
 int historyMoves[12][64];
+int counterMoves[12][64];
+int prevMovePiece[maxPly];
+int prevMoveTarget[maxPly];
 
 // Table to store principal variation moves
 int PrincipalVariationLength[maxPly]; 
@@ -180,10 +183,10 @@ static inline int scoreMove(Board *board, int move) {
         return MvvLva[piece][capturedPiece] + 10000;
     }
     else{
-        // score killer moves
         if (killerMoves[0][ply] == move) return 9000;
         if (killerMoves[1][ply] == move) return 8000;
-        // score history move
+        if (ply > 0 && counterMoves[prevMovePiece[ply - 1]][prevMoveTarget[ply - 1]] == move)
+            return 7000;
         return historyMoves[piece][target] + 1000;
     }
     return 0;
@@ -451,6 +454,9 @@ static inline int negamax(Board *board, int alpha, int beta, int depth) {
         ply++;
         legalMoves++;
 
+        prevMovePiece[ply] = decodePiece(move);
+        prevMoveTarget[ply] = decodeTarget(move);
+
         bool givesCheck = isBoardInCheck(board);
 
         if (!PVnode && !inCheck && !givesCheck && movesSearched > 0) {
@@ -525,6 +531,9 @@ static inline int negamax(Board *board, int alpha, int beta, int depth) {
                 if (!isCapture) {
                     killerMoves[1][ply] = killerMoves[0][ply];
                     killerMoves[0][ply] = move;
+
+                    if (ply > 0)
+                        counterMoves[prevMovePiece[ply - 1]][prevMoveTarget[ply - 1]] = move;
                 }
 
                 return beta;
@@ -576,6 +585,9 @@ void searchPosition(Board *board, SearchUCI *searchparams) {
     memset(PrincipalVariationTable, 0, sizeof(PrincipalVariationTable)); 
     memset(killerMoves, 0, sizeof(killerMoves));
     memset(historyMoves, 0, sizeof(historyMoves));
+    memset(counterMoves, 0, sizeof(counterMoves));
+    memset(prevMovePiece, 0, sizeof(prevMovePiece));
+    memset(prevMoveTarget, 0, sizeof(prevMoveTarget));
     //clearTranspositionTable(); // Clear the transposition table before starting the search
 
     int delta = 25;

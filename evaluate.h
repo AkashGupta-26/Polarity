@@ -213,34 +213,34 @@ U64 isolatedPawnMasks[64];
 U64 passedPawnMasks[2][64];
 
 
-EVAL_PARAM int doublePawnPenalty = -14;
-EVAL_PARAM int isolatedPawnPenalty = -20;
+EVAL_PARAM int doublePawnPenalty = -10;
+EVAL_PARAM int isolatedPawnPenalty = -14;
 EVAL_PARAM int passedPawnBonus[2][8] = {
-    {0, 5, 5, 10, 33, 50, 63, 0},
-    {0, 5, 10, 37, 62, 69, 95, 0}
+    {0, 0, 0, 0, 48, 83, 93, 0},
+    {0, 0, 0, 28, 49, 61, 35, 0}
 };
-EVAL_PARAM int passedPawnFriendlyKingBonus = 5;
-EVAL_PARAM int passedPawnEnemyKingPenalty = 8;
+EVAL_PARAM int passedPawnFriendlyKingBonus = 3;
+EVAL_PARAM int passedPawnEnemyKingPenalty = 5;
 
-EVAL_PARAM int bishopPairBonus[2] = {42, 63};
-EVAL_PARAM int tempoBonus = 9;
+EVAL_PARAM int bishopPairBonus[2] = {16, 81};
+EVAL_PARAM int tempoBonus = 10;
 
-EVAL_PARAM int semiOpenFileBonus = 15;
-EVAL_PARAM int openFileBonus = 22;
+EVAL_PARAM int semiOpenFileBonus = 10;
+EVAL_PARAM int openFileBonus = 12;
 
-EVAL_PARAM int pawnShieldBonus = 6;
+EVAL_PARAM int pawnShieldBonus = 0;
 EVAL_PARAM int pawnShieldMissingPenalty = -9;
 
-EVAL_PARAM int backwardPawnPenalty[2] = {-6, -19};
+EVAL_PARAM int backwardPawnPenalty[2] = {-10, -16};
 
-EVAL_PARAM int rookOn7thBonus[2] = {20, 31};
+EVAL_PARAM int rookOn7thBonus[2] = {5, 15};
 
-EVAL_PARAM int knightOutpostBonus[2] = {30, 15};
-EVAL_PARAM int rookBehindPassedBonus[2] = {13, 13};
-EVAL_PARAM int connectedPassedBonus[2] = {10, 10};
+EVAL_PARAM int knightOutpostBonus[2] = {21, 16};
+EVAL_PARAM int rookBehindPassedBonus[2] = {0, 0};
+EVAL_PARAM int connectedPassedBonus[2] = {0, 7};
 
-EVAL_PARAM int badBishopPenalty[2] = {-3, -7};
-EVAL_PARAM int blockedPasserPenalty[2] = {-12, -23};
+EVAL_PARAM int badBishopPenalty[2] = {-2, -10};
+EVAL_PARAM int blockedPasserPenalty[2] = {-20, -40};
 
 EVAL_PARAM int kingAttackWeights[] = {0, 2, 2, 3, 5, 0, 0, 2, 2, 3, 5, 0};
 EVAL_PARAM int kingSafetyTable[] = {

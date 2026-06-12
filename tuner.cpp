@@ -7,10 +7,13 @@
 #include <sstream>
 #include <algorithm>
 #include <chrono>
+#include <thread>
+#include <atomic>
+#include <numeric>
 
 struct TunePosition {
     std::string fen;
-    double result; // 1.0 = white win, 0.5 = draw, 0.0 = black win
+    double result;
 };
 
 struct TuneParam {
@@ -18,26 +21,65 @@ struct TuneParam {
     std::string name;
     int minVal;
     int maxVal;
+    int startVal; // original value for regularization
+    double gradient;
+    double m;  // Adam first moment
+    double v;  // Adam second moment
 };
 
 double sigK = 1.13;
+double REGULARIZATION = 0.0; // L2 regularization strength (set via CLI)
+std::vector<TuneParam>* globalParams = nullptr;
+int NUM_THREADS = std::max(1, (int)std::thread::hardware_concurrency() - 1);
 
 double sigmoid(int eval) {
     return 1.0 / (1.0 + pow(10.0, -sigK * eval / 400.0));
 }
 
-double computeError(const std::vector<TunePosition>& positions) {
+double computeErrorChunk(const std::vector<TunePosition>& positions, int start, int end) {
     double totalError = 0.0;
     Board board;
-    for (const auto& pos : positions) {
-        parseFEN(&board, pos.fen);
+    for (int i = start; i < end; i++) {
+        parseFEN(&board, positions[i].fen);
         int eval = evaluate(&board);
         if (board.sideToMove == black) eval = -eval;
         double predicted = sigmoid(eval);
-        double diff = pos.result - predicted;
+        double diff = positions[i].result - predicted;
         totalError += diff * diff;
     }
-    return totalError / positions.size();
+    return totalError;
+}
+
+double computeError(const std::vector<TunePosition>& positions) {
+    int n = positions.size();
+    int chunkSize = n / NUM_THREADS;
+    std::vector<std::thread> threads;
+    std::vector<double> errors(NUM_THREADS, 0.0);
+
+    for (int t = 0; t < NUM_THREADS; t++) {
+        int start = t * chunkSize;
+        int end = (t == NUM_THREADS - 1) ? n : (t + 1) * chunkSize;
+        threads.emplace_back([&, t, start, end]() {
+            errors[t] = computeErrorChunk(positions, start, end);
+        });
+    }
+    for (auto& th : threads) th.join();
+
+    double total = 0.0;
+    for (double e : errors) total += e;
+    double mse = total / n;
+
+    // L2 regularization: penalize deviation from starting values
+    if (REGULARIZATION > 0.0 && globalParams) {
+        double regPenalty = 0.0;
+        for (const auto& p : *globalParams) {
+            double diff = (*p.ptr - p.startVal);
+            regPenalty += diff * diff;
+        }
+        mse += REGULARIZATION * regPenalty / globalParams->size();
+    }
+
+    return mse;
 }
 
 double findOptimalK(const std::vector<TunePosition>& positions) {
@@ -68,9 +110,6 @@ std::vector<TunePosition> loadPositions(const std::string& filename) {
     while (std::getline(file, line)) {
         if (line.empty()) continue;
 
-        // Format: FEN [result] or FEN ; result
-        // Support: "fen [1.0]", "fen [0.5]", "fen [0.0]"
-        // Also: "fen ; 1-0", "fen ; 1/2-1/2", "fen ; 0-1"
         size_t bracketOpen = line.find('[');
         size_t bracketClose = line.find(']');
         size_t semicolon = line.find(';');
@@ -94,7 +133,6 @@ std::vector<TunePosition> loadPositions(const std::string& filename) {
         } else {
             continue;
         }
-
         positions.push_back(pos);
     }
 
@@ -103,53 +141,159 @@ std::vector<TunePosition> loadPositions(const std::string& filename) {
 }
 
 void registerParams(std::vector<TuneParam>& params) {
-    params.push_back({&doublePawnPenalty, "doublePawnPenalty", -30, 0});
-    params.push_back({&isolatedPawnPenalty, "isolatedPawnPenalty", -30, 0});
+    auto reg = [&](int* ptr, const std::string& name, int lo, int hi) {
+        params.push_back({ptr, name, lo, hi, *ptr, 0, 0, 0});
+    };
+
+    reg(&doublePawnPenalty, "doublePawnPenalty", -40, 0);
+    reg(&isolatedPawnPenalty, "isolatedPawnPenalty", -40, 0);
 
     for (int r = 1; r <= 6; r++) {
-        params.push_back({&passedPawnBonus[0][r], "passedPawnBonus_MG_" + std::to_string(r), 0, 80});
-        params.push_back({&passedPawnBonus[1][r], "passedPawnBonus_EG_" + std::to_string(r), 0, 150});
+        reg(&passedPawnBonus[0][r], "passedPawnBonus_MG_" + std::to_string(r), 0, 120);
+        reg(&passedPawnBonus[1][r], "passedPawnBonus_EG_" + std::to_string(r), 0, 180);
     }
 
-    params.push_back({&passedPawnFriendlyKingBonus, "passedPawnFriendlyKingBonus", 0, 10});
-    params.push_back({&passedPawnEnemyKingPenalty, "passedPawnEnemyKingPenalty", 0, 15});
+    reg(&passedPawnFriendlyKingBonus, "passedPawnFriendlyKingBonus", 0, 12);
+    reg(&passedPawnEnemyKingPenalty, "passedPawnEnemyKingPenalty", 0, 18);
 
-    params.push_back({&bishopPairBonus[0], "bishopPairBonus_MG", 10, 60});
-    params.push_back({&bishopPairBonus[1], "bishopPairBonus_EG", 20, 80});
+    reg(&bishopPairBonus[0], "bishopPairBonus_MG", 10, 80);
+    reg(&bishopPairBonus[1], "bishopPairBonus_EG", 20, 100);
 
-    params.push_back({&tempoBonus, "tempoBonus", 5, 25});
+    reg(&tempoBonus, "tempoBonus", 0, 25);
 
-    params.push_back({&semiOpenFileBonus, "semiOpenFileBonus", 5, 30});
-    params.push_back({&openFileBonus, "openFileBonus", 10, 40});
+    reg(&semiOpenFileBonus, "semiOpenFileBonus", 5, 35);
+    reg(&openFileBonus, "openFileBonus", 10, 45);
 
-    params.push_back({&pawnShieldBonus, "pawnShieldBonus", 3, 20});
-    params.push_back({&pawnShieldMissingPenalty, "pawnShieldMissingPenalty", -25, 0});
+    reg(&pawnShieldBonus, "pawnShieldBonus", 0, 20);
+    reg(&pawnShieldMissingPenalty, "pawnShieldMissingPenalty", -25, 0);
 
-    params.push_back({&backwardPawnPenalty[0], "backwardPawnPenalty_MG", -20, 0});
-    params.push_back({&backwardPawnPenalty[1], "backwardPawnPenalty_EG", -25, 0});
+    reg(&backwardPawnPenalty[0], "backwardPawnPenalty_MG", -25, 0);
+    reg(&backwardPawnPenalty[1], "backwardPawnPenalty_EG", -30, 0);
 
-    params.push_back({&rookOn7thBonus[0], "rookOn7thBonus_MG", 5, 35});
-    params.push_back({&rookOn7thBonus[1], "rookOn7thBonus_EG", 10, 50});
+    reg(&rookOn7thBonus[0], "rookOn7thBonus_MG", 5, 45);
+    reg(&rookOn7thBonus[1], "rookOn7thBonus_EG", 10, 55);
 
-    params.push_back({&knightOutpostBonus[0], "knightOutpostBonus_MG", 5, 40});
-    params.push_back({&knightOutpostBonus[1], "knightOutpostBonus_EG", 0, 25});
+    reg(&knightOutpostBonus[0], "knightOutpostBonus_MG", 5, 50);
+    reg(&knightOutpostBonus[1], "knightOutpostBonus_EG", 0, 30);
 
-    params.push_back({&rookBehindPassedBonus[0], "rookBehindPassedBonus_MG", 0, 25});
-    params.push_back({&rookBehindPassedBonus[1], "rookBehindPassedBonus_EG", 5, 40});
+    reg(&rookBehindPassedBonus[0], "rookBehindPassedBonus_MG", 0, 30);
+    reg(&rookBehindPassedBonus[1], "rookBehindPassedBonus_EG", 0, 35);
 
-    params.push_back({&connectedPassedBonus[0], "connectedPassedBonus_MG", 0, 25});
-    params.push_back({&connectedPassedBonus[1], "connectedPassedBonus_EG", 5, 35});
+    reg(&connectedPassedBonus[0], "connectedPassedBonus_MG", 0, 25);
+    reg(&connectedPassedBonus[1], "connectedPassedBonus_EG", 0, 35);
 
-    params.push_back({&badBishopPenalty[0], "badBishopPenalty_MG", -10, 0});
-    params.push_back({&badBishopPenalty[1], "badBishopPenalty_EG", -15, 0});
+    reg(&badBishopPenalty[0], "badBishopPenalty_MG", -12, 0);
+    reg(&badBishopPenalty[1], "badBishopPenalty_EG", -18, 0);
 
-    params.push_back({&blockedPasserPenalty[0], "blockedPasserPenalty_MG", -20, 0});
-    params.push_back({&blockedPasserPenalty[1], "blockedPasserPenalty_EG", -30, 0});
+    reg(&blockedPasserPenalty[0], "blockedPasserPenalty_MG", -25, 0);
+    reg(&blockedPasserPenalty[1], "blockedPasserPenalty_EG", -40, 0);
+}
+
+void computeGradients(std::vector<TunePosition>& positions, std::vector<TuneParam>& params, int step) {
+    double baseError = computeError(positions);
+
+    std::vector<std::thread> threads;
+    int numParams = params.size();
+
+    for (int i = 0; i < numParams; i++) {
+        int original = *params[i].ptr;
+        int newVal = std::min(original + step, params[i].maxVal);
+        if (newVal == original) newVal = std::max(original - step, params[i].minVal);
+
+        *params[i].ptr = newVal;
+        double newError = computeError(positions);
+        *params[i].ptr = original;
+
+        params[i].gradient = (newError - baseError) / (newVal - original);
+    }
+}
+
+void adamOptimize(std::vector<TunePosition>& positions, std::vector<TuneParam>& params) {
+    const double alpha = 2.0;    // Learning rate (in integer param units)
+    const double beta1 = 0.9;
+    const double beta2 = 0.999;
+    const double epsilon = 1e-8;
+    const int maxEpochs = 200;
+    const int patienceLimit = 10;
+
+    double bestError = computeError(positions);
+    std::cout << "Initial error: " << bestError << std::endl;
+
+    std::vector<int> bestValues(params.size());
+    for (size_t i = 0; i < params.size(); i++) bestValues[i] = *params[i].ptr;
+
+    int patience = 0;
+    int step = 3;
+
+    for (int epoch = 1; epoch <= maxEpochs; epoch++) {
+        auto start = std::chrono::steady_clock::now();
+
+        if (epoch > 50) step = 2;
+        if (epoch > 100) step = 1;
+
+        computeGradients(positions, params, step);
+
+        int paramsChanged = 0;
+        for (size_t i = 0; i < params.size(); i++) {
+            auto& p = params[i];
+
+            p.m = beta1 * p.m + (1.0 - beta1) * p.gradient;
+            p.v = beta2 * p.v + (1.0 - beta2) * p.gradient * p.gradient;
+
+            double mHat = p.m / (1.0 - pow(beta1, epoch));
+            double vHat = p.v / (1.0 - pow(beta2, epoch));
+
+            double update = -alpha * mHat / (sqrt(vHat) + epsilon);
+
+            int intUpdate = (int)round(update);
+            if (intUpdate == 0 && std::abs(update) > 0.3) {
+                intUpdate = (update > 0) ? 1 : -1;
+            }
+
+            if (intUpdate != 0) {
+                int newVal = *p.ptr + intUpdate;
+                newVal = std::max(p.minVal, std::min(p.maxVal, newVal));
+                if (newVal != *p.ptr) {
+                    *p.ptr = newVal;
+                    paramsChanged++;
+                }
+            }
+        }
+
+        double currentError = computeError(positions);
+
+        if (currentError < bestError) {
+            bestError = currentError;
+            for (size_t i = 0; i < params.size(); i++) bestValues[i] = *params[i].ptr;
+            patience = 0;
+        } else {
+            patience++;
+        }
+
+        auto end = std::chrono::steady_clock::now();
+        double secs = std::chrono::duration<double>(end - start).count();
+        std::cout << "Epoch " << epoch << " (" << secs << "s): error=" << currentError
+                  << " best=" << bestError << " changed=" << paramsChanged
+                  << " step=" << step << " patience=" << patience << std::endl;
+
+        if (patience >= patienceLimit) {
+            std::cout << "Early stopping: no improvement for " << patienceLimit << " epochs" << std::endl;
+            break;
+        }
+
+        if (paramsChanged == 0 && step == 1) {
+            std::cout << "Converged: no parameters changed at minimum step size" << std::endl;
+            break;
+        }
+    }
+
+    for (size_t i = 0; i < params.size(); i++) *params[i].ptr = bestValues[i];
+    std::cout << "\nFinal error: " << bestError << std::endl;
 }
 
 void localSearch(std::vector<TunePosition>& positions, std::vector<TuneParam>& params) {
     double bestError = computeError(positions);
-    std::cout << "Initial error: " << bestError << std::endl;
+    std::cout << "\nLocal search refinement from error: " << bestError << std::endl;
 
     bool improved = true;
     int epoch = 0;
@@ -162,26 +306,22 @@ void localSearch(std::vector<TunePosition>& positions, std::vector<TuneParam>& p
         for (auto& p : params) {
             int original = *p.ptr;
 
-            // Try +1
             if (original + 1 <= p.maxVal) {
                 *p.ptr = original + 1;
                 double err = computeError(positions);
                 if (err < bestError) {
                     bestError = err;
                     improved = true;
-                    std::cout << "  " << p.name << ": " << original << " -> " << (original + 1) << " (err: " << err << ")" << std::endl;
                     continue;
                 }
             }
 
-            // Try -1
             if (original - 1 >= p.minVal) {
                 *p.ptr = original - 1;
                 double err = computeError(positions);
                 if (err < bestError) {
                     bestError = err;
                     improved = true;
-                    std::cout << "  " << p.name << ": " << original << " -> " << (original - 1) << " (err: " << err << ")" << std::endl;
                     continue;
                 }
             }
@@ -191,11 +331,10 @@ void localSearch(std::vector<TunePosition>& positions, std::vector<TuneParam>& p
 
         auto end = std::chrono::steady_clock::now();
         double secs = std::chrono::duration<double>(end - start).count();
-        std::cout << "Epoch " << epoch << " complete (" << secs << "s), error: " << bestError << std::endl;
+        std::cout << "  Refine epoch " << epoch << " (" << secs << "s), error: " << bestError << std::endl;
     }
 
-    std::cout << "\nOptimization complete after " << epoch << " epochs." << std::endl;
-    std::cout << "Final error: " << bestError << std::endl;
+    std::cout << "Local search complete after " << epoch << " epochs, final error: " << bestError << std::endl;
 }
 
 void printResults(const std::vector<TuneParam>& params) {
@@ -232,10 +371,16 @@ void printResults(const std::vector<TuneParam>& params) {
 
 int main(int argc, char* argv[]) {
     if (argc < 2) {
-        std::cerr << "Usage: tuner <positions.txt>" << std::endl;
+        std::cerr << "Usage: tuner <positions.txt> [threads] [regularization]" << std::endl;
         std::cerr << "Format: FEN [result]  where result is 1.0, 0.5, or 0.0" << std::endl;
+        std::cerr << "Regularization: 0.0 = no constraint, 0.001 = conservative" << std::endl;
         return 1;
     }
+
+    if (argc >= 3) NUM_THREADS = std::atoi(argv[2]);
+    if (argc >= 4) REGULARIZATION = std::atof(argv[3]);
+    std::cout << "Using " << NUM_THREADS << " threads" << std::endl;
+    std::cout << "Regularization: " << REGULARIZATION << std::endl;
 
     initializeMoveTables();
     initializeRandomKeys();
@@ -251,8 +396,10 @@ int main(int argc, char* argv[]) {
 
     std::vector<TuneParam> params;
     registerParams(params);
+    globalParams = &params;
     std::cout << "Tuning " << params.size() << " parameters over " << positions.size() << " positions" << std::endl;
 
+    adamOptimize(positions, params);
     localSearch(positions, params);
     printResults(params);
 

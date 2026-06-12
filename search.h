@@ -135,6 +135,7 @@ int historyMoves[12][64];
 int counterMoves[12][64];
 int prevMovePiece[maxPly];
 int prevMoveTarget[maxPly];
+int staticEvalHistory[maxPly];
 
 // Table to store principal variation moves
 int PrincipalVariationLength[maxPly]; 
@@ -361,6 +362,8 @@ static inline int negamax(Board *board, int alpha, int beta, int depth) {
     int movesSearched = 0;
 
     int staticEval = evaluate(board);
+    staticEvalHistory[ply] = staticEval;
+    bool improving = (ply >= 2 && staticEval > staticEvalHistory[ply - 2]);
 
     // Internal iterative deepening when no hash move is available
     if (depth >= 5 && bestMove == 0 && !inCheck) {
@@ -459,9 +462,9 @@ static inline int negamax(Board *board, int alpha, int beta, int depth) {
 
         bool givesCheck = isBoardInCheck(board);
 
-        if (!PVnode && !inCheck && !givesCheck && movesSearched > 0) {
+        if (!PVnode && !inCheck && !givesCheck && movesSearched > 0 && move != bestMove) {
             if (depth <= 4 && !isCapture && !isPromotion &&
-                movesSearched >= lmpThreshold[depth]) {
+                movesSearched >= lmpThreshold[depth] + (improving ? depth : 0)) {
                 ply--;
                 repetitionIndex--;
                 takeBack(board, backup);
@@ -469,7 +472,7 @@ static inline int negamax(Board *board, int alpha, int beta, int depth) {
             }
 
             if (depth <= 3 && !isCapture && !isPromotion &&
-                staticEval + futilityMargins[depth] <= alpha) {
+                staticEval + futilityMargins[depth] + (improving ? 80 : 0) <= alpha) {
                 ply--;
                 repetitionIndex--;
                 takeBack(board, backup);
@@ -588,6 +591,7 @@ void searchPosition(Board *board, SearchUCI *searchparams) {
     memset(counterMoves, 0, sizeof(counterMoves));
     memset(prevMovePiece, 0, sizeof(prevMovePiece));
     memset(prevMoveTarget, 0, sizeof(prevMoveTarget));
+    memset(staticEvalHistory, 0, sizeof(staticEvalHistory));
     //clearTranspositionTable(); // Clear the transposition table before starting the search
 
     int delta = 25;

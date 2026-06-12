@@ -578,11 +578,13 @@ void searchPosition(Board *board, SearchUCI *searchparams) {
     memset(historyMoves, 0, sizeof(historyMoves));
     //clearTranspositionTable(); // Clear the transposition table before starting the search
 
+    int delta = 25;
+
     for (int curDepth = 1; curDepth <= depth; curDepth++){
 
         if (searchParams->stop or searchParams->quit) {
             std::cout << "info Search Time Over" << std::endl;
-            break; // Stop search if requested
+            break;
         }
 
         followPrincipalVariation = 1;
@@ -594,19 +596,25 @@ void searchPosition(Board *board, SearchUCI *searchparams) {
             break;
         }
 
-        if ((score <= alpha) || (score >= beta)) {
-            alpha = -INFINITY;
-            beta = INFINITY;
+        if (score <= alpha) {
+            alpha = score - delta;
+            delta *= 2;
+            if (delta > 500) { alpha = -INFINITY; beta = INFINITY; }
             curDepth--;
             continue;
         }
-        // aspiration window
-        alpha = score - 50;
-        beta = score + 50; // Narrow the search window for the next iteration
 
-        /* I tried removing Aspiration windows and the result was worse
-           than using them for reasons I don't know :| 
-           Since it works, I am not touching it*/
+        if (score >= beta) {
+            beta = score + delta;
+            delta *= 2;
+            if (delta > 500) { alpha = -INFINITY; beta = INFINITY; }
+            curDepth--;
+            continue;
+        }
+
+        alpha = score - 25;
+        beta = score + 25;
+        delta = 25;
 
         if (searchParams->stop || searchParams->quit) {
             if (PrincipalVariationLastIterationLength > 0 &&

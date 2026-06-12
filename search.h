@@ -368,9 +368,9 @@ static inline int negamax(Board *board, int alpha, int beta, int depth) {
         readHashEntry(board, &bestMove, -INFINITY, INFINITY, 1, ply);
     }
 
-    // Evaluation Pruning / Static Null Move Pruning
-    if (depth < 3 && !PVnode && !inCheck && abs(beta - 1) > -INFINITY + 100){
-        int evalMargin = 120 * depth;
+    // Reverse Futility Pruning / Static Null Move Pruning
+    if (depth <= 6 && !PVnode && !inCheck && abs(beta) < MATEVALUE - maxPly){
+        int evalMargin = 80 * depth;
         if (staticEval - evalMargin >= beta)
             return staticEval - evalMargin;
     }

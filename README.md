@@ -113,99 +113,74 @@ Multiple techniques are implemented to improve the search efficiency:
 ---
 ## Version History
 
-### Polarity V14
-- Added per-side attack bitboards for threat detection and safe mobility.
-- Mobility now excludes squares defended by enemy pawns (safe mobility).
-- Added threat evaluation: minor pieces threatening rooks/queens, hanging pieces, pawn push threats.
-- Added space evaluation for central territory control in middlegame.
-- Added pawn storm bonus for pawns advancing on enemy king files.
-- Fixed knight outpost logic — now requires pawn support and can't be kicked by enemy pawns.
-- Added center control, connected rooks, pawn duo, and king adjacent open file bonuses.
-- +42 Elo points than V13.
+### V0 — Foundation & Move Generation (May 2025)
+| Version | Description |
+|---------|-------------|
+| V0.1 | Initial commit, board skeleton, leaper piece attack tables |
+| V0.2 | Slider piece move generation (magic bitboards) |
+| V0.3 | Pawn moves complete |
+| V0.4 | Make/unmake move, legal move detection |
+| V0.5 | Perft tests passed — move generation verified |
+| V0.5.1 | README & Makefile update |
 
-### Polarity V13
-- Halved free passer bonus for rook pawns (a/h file) since they're harder to promote.
-- Added free passer bonus for passed pawns with no blocker in front.
-- Improved mop-up evaluation with stronger edge-pushing weights.
-- Added endgame scaling for drawish positions (opposite color bishops, etc.).
-- +15 Elo points than V12.
+### V1 — UCI, Search & Evaluation (May 2025 – Sep 2025)
+| Version | Description | Elo |
+|---------|-------------|-----|
+| V1.0 | UCI protocol support | — |
+| V1.0.1 | Board as pointer refactor | — |
+| V1.1 | Negamax + basic evaluation | — |
+| V1.2 | MVV-LVA move ordering | — |
+| V1.3 | PV search + iterative deepening | — |
+| V1.4 | Late move reductions | — |
+| V1.5 | Aspiration windows | — |
+| V1.6 | Transposition tables | — |
+| V1.6.2 | Move gen order tweak (−5% nodes) | — |
+| V1.7 | Repetition detection (WIP) | — |
+| V1.8 | Repetition + UCI timing + search polish | — |
+| V1.9 | PeSTO evaluation + pawn analysis | +80 |
+| V1.9.1 | PeSTO fix, mop-up evaluation | +50 |
+| V1.9.2 | Rook/king file analysis | — |
+| V1.9.3 | Pawn capture bugfix, fifty-move draws | — |
+| V1.10 | Dynamic TT sizing, best move storage | +40 |
+| V1.11 | Mobility bonus, TT persistence | +70 |
+| V1.12 | Insufficient material detection | +30 |
+| V1.13 | Minor piece endgame helper, qsearch checks | +50 |
+| V1.14 | Static eval pruning, razoring, qsearch checks | +100 |
+| V1.15 | MATEVALUE bugfix, depth fix | +35 |
+| V1.15.2 | Double depth increment fix | — |
+| V1.15.3 | Static linking in makefile | — |
 
-### Polarity V12
-- Never prune the TT/hash move in LMP/futility — it's almost always the best move.
-- Extended reverse futility pruning up to depth 6 with tighter margins.
-- Added countermove history for better quiet move ordering.
-- Improved aspiration window scaling with gradual widening (1.5x growth instead of fixed steps).
-- +30 Elo points than V11.
+### V2 — Major Search & Eval Overhaul (Jun 2026)
+| Version | Description | Elo |
+|---------|-------------|-----|
+| V2.0 | Search bug fixes + new pruning techniques | — |
+| V2.0.1 | Match runner tool for engine testing | — |
+| V2.0.2 | Bishop endgame eval fix | — |
+| V2.0.3 | TT lookup/storage/ordering overhaul | — |
+| V2.1 | Pruning safety + search stability fixes | — |
+| V2.2 | Bishop pair, tempo, passed pawn eval | — |
+| V2.2.1 | King shelter, backward pawn, rook on 7th | — |
+| V2.2.2 | Knight outpost, rook behind passer, connected passers | — |
+| V2.3 | Eval parameter tuning (endgame rebalance) | — |
+| V2.4 | Merge EvaluationFixes + SearchFixes branches | — |
+| V2.5 | Fix duplicate eval counting | — |
+| V2.5.1 | Restore mop-up, fix connected passers | — |
+| V2.6 | King attack zone evaluation | — |
+| V2.6.1 | Bad bishop penalty, blocked passer detection | — |
+| V2.7 | Texel tuner + blended tuned eval values | — |
+| V2.8 | Retune on E12.52 dataset | +56 |
+| V2.9 | Aspiration window scaling improvement | — |
+| V2.9.1 | Countermove history ordering | — |
+| V2.9.2 | Reverse futility pruning extension | — |
+| V2.9.3 | TT hash move protection from pruning | +30 |
+| V2.10 | Endgame eval: free passer, mop-up, drawish scaling | +15 |
+| V2.10.1 | Rook pawn free passer halving | — |
+| V2.11 | Structural eval improvements | +42 |
 
-### Polarity V11
-- Retuned all eval parameters on a 500k position dataset using the Texel tuner.
-- Added Texel tuner (Adam optimization + local search) for automated parameter tuning.
-- Added bad bishop penalty and blocked passer detection.
-- Added king attack zone evaluation with weighted piece attacks and safety table.
-- Fixed duplicate evaluation component counting.
-- +56 Elo points than V10.
+---
+## Note on AI Assistance
 
-### Polarity V10
-- Fixed MATEVALUE bug in 50 move rule detection.
-- Incremented depth above quiescence search.
-- +35 Elo points than V9.
-
-### Polarity V9
-- Added Static Evaluation Pruning (V9a - +70 Elo points than V8).
-- Added Razoring in Search (V9b - +80 Elo points than V8).
-- Allowed checks to be processed in Quiescence Search (V9c - +100 Elo points than V8).
-- +100 Elo points than V8.
-
-### Polarity V8
-- Added Minor Piece Endgame Helper for Bishops.
-- +50 Elo points than V7.
-
-### Polarity V10 (scraped)
-- Added Checks in Move Ordering.
-- Perform Worse than V7.
-- Reverted to V8, with original mobility bonus for minor pieces in endgame.
-
-
-### Polarity V9 (scraped)
-- Allowed Checks to be processed in Quiescence Search.
-- Added back Mobility Bonus for minor pieces in endgame with lesser weights.
-- Performance not stable, sometimes wins against V7 sometimes loses.
-
-### Polarity V8 (scraped)
-- Added Minor Piece Endgame Helper for Bishops.
-- Removed mobility bonus for minor pieces in endgame.
-- -40 Elo points than V7.
-
-### Polarity V7
-- Added Insufficient Material Detection.
-- +30 Elo points than V6.
-
-### Polarity V6
-- Added Mobility Bonus for all pieces to encourage piece activity.
-- Added King Shield Bonus
-- Transposition Table now clears only on UCI new game command.
-- +70 Elo points than V5.
-
-### Polarity V5
-- Added Best Move history and ordering in Transposition Table.
-- +40 Elo points than V4.
-
-### Polarity V4
-- Added Tapered evaluation.
-- MopUp evaluation for endgame checkmates.
-- +50 Elo points than V3.
-
-### Polarity V3
-- Added PeSTO evaluation tables.
-- +80 Elo points than V2.
-
-### Polarity V2
-- Added Passed Pawn bonus and Isolated Pawn penalty.
-- +30 Elo points than V1.
-
-### Polarity V1
-- Initial release with basic evaluation and search.
-- Evaluation based on estimated piece values and piece-square tables.
+Everything up to and including V1 (V0.x and V1.x) was developed entirely by hand, without any AI assistance. Starting from V2, changes were made with the help of AI.
 
 ---
 ## References

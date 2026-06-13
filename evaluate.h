@@ -27,7 +27,7 @@ const int mirrorSquare[] = {
     a1, b1, c1, d1, e1, f1, g1, h1
 };
 
-const int pieceValue[2][12] = {
+EVAL_PARAM int pieceValue[2][12] = {
     {82, 337, 365, 477, 1025,  0, -82, -337, -365, -477, -1025,  0},
     {94, 281, 297, 512,  936,  0, -94, -281, -297, -512,  -936,  0}
 };
@@ -242,6 +242,23 @@ EVAL_PARAM int connectedPassedBonus[2] = {0, 7};
 EVAL_PARAM int badBishopPenalty[2] = {-2, -10};
 EVAL_PARAM int blockedPasserPenalty[2] = {-20, -40};
 
+EVAL_PARAM int mobilityMG = 3;
+EVAL_PARAM int mobilityEG = 5;
+
+EVAL_PARAM int threatByMinor[2] = {25, 30};
+EVAL_PARAM int threatByRook[2] = {35, 40};
+EVAL_PARAM int hangingPenalty[2] = {-20, -25};
+EVAL_PARAM int pawnPushThreat = 15;
+
+EVAL_PARAM int spaceBonus = 3;
+
+EVAL_PARAM int pawnStormBonus[] = {0, 0, 0, 10, 20, 30, 0, 0};
+
+EVAL_PARAM int centerControlBonus[2] = {4, 2};
+EVAL_PARAM int connectedRookBonus[2] = {8, 12};
+EVAL_PARAM int pawnDuoBonus[2] = {5, 3};
+EVAL_PARAM int kingAdjacentOpenFile = -10;
+
 EVAL_PARAM int kingAttackWeights[] = {0, 2, 2, 3, 5, 0, 0, 2, 2, 3, 5, 0};
 EVAL_PARAM int kingSafetyTable[] = {
     0,   0,   2,   5,  10,  16,  23,  32,  42,  54,
@@ -419,6 +436,18 @@ static inline int evaluate(Board *board) {
     int whiteKingAttackWeight = 0, blackKingAttackWeight = 0;
     int whiteKingAttackerCount = 0, blackKingAttackerCount = 0;
 
+    U64 whiteAttacks = 0ULL, blackAttacks = 0ULL;
+    U64 whitePawnAttacks = 0ULL, blackPawnAttacks = 0ULL;
+
+    U64 wp = board->bitboards[P];
+    while (wp) { int sq = getLSBindex(wp); whitePawnAttacks |= pawnAttacks[white][sq]; popBit(wp, sq); }
+    U64 bp = board->bitboards[p];
+    while (bp) { int sq = getLSBindex(bp); blackPawnAttacks |= pawnAttacks[black][sq]; popBit(bp, sq); }
+    whiteAttacks |= whitePawnAttacks;
+    blackAttacks |= blackPawnAttacks;
+    whiteAttacks |= kingAttacks[whiteKingSq];
+    blackAttacks |= kingAttacks[blackKingSq];
+
     for (int piece = P; piece <= k; ++piece) {
         bitboard = board->bitboards[piece];
         while (bitboard) {
@@ -450,6 +479,15 @@ static inline int evaluate(Board *board) {
                                 egScore += doublePawnPenalty;
                                 break;
                             }
+                        }
+                    }
+
+                    {
+                        int pFile = square % 8;
+                        int pRank = square / 8;
+                        if (pFile < 7 && (board->bitboards[P] & (1ULL << (pRank * 8 + pFile + 1)))) {
+                            mgScore += pawnDuoBonus[0];
+                            egScore += pawnDuoBonus[1];
                         }
                     }
 
@@ -500,19 +538,23 @@ static inline int evaluate(Board *board) {
                     break;
 
                 case N:
-                    mobility = countBits(knightAttacks[square] & ~board->occupancies[white]);
-                    mgScore += knightSquareTable[0][square] + mobility * 3;
-                    egScore += knightSquareTable[1][square] + mobility * 5;
-
-                    if (knightAttacks[square] & blackKingZone) {
-                        whiteKingAttackWeight += 2;
-                        whiteKingAttackerCount++;
-                    }
-
                     {
+                        U64 attacks = knightAttacks[square];
+                        whiteAttacks |= attacks;
+                        mobility = countBits(attacks & ~board->occupancies[white] & ~blackPawnAttacks);
+                        mgScore += knightSquareTable[0][square] + mobility * mobilityMG;
+                        egScore += knightSquareTable[1][square] + mobility * mobilityEG;
+
+                        if (attacks & blackKingZone) {
+                            whiteKingAttackWeight += 2;
+                            whiteKingAttackerCount++;
+                        }
+
                         int knightRank = square / 8;
-                        if (knightRank >= 3 && knightRank <= 5 &&
-                            (isolatedPawnMasks[square] & passedPawnMasks[white][square] & board->bitboards[p]) == 0) {
+                        bool onOutpost = knightRank >= 3 && knightRank <= 5;
+                        bool defendedByPawn = whitePawnAttacks & (1ULL << square);
+                        bool canBeKicked = (isolatedPawnMasks[square] & passedPawnMasks[white][square] & board->bitboards[p]) != 0;
+                        if (onOutpost && defendedByPawn && !canBeKicked) {
                             mgScore += knightOutpostBonus[0];
                             egScore += knightOutpostBonus[1];
                         }
@@ -522,9 +564,10 @@ static inline int evaluate(Board *board) {
                 case B:
                     {
                         U64 attacks = getBishopAttacks(square, board->occupancies[both]);
-                        mobility = countBits(attacks);
-                        mgScore += bishopSquareTable[0][square] + mobility * 3;
-                        egScore += bishopSquareTable[1][square] + mobility * 5;
+                        whiteAttacks |= attacks;
+                        mobility = countBits(attacks & ~board->occupancies[white] & ~blackPawnAttacks);
+                        mgScore += bishopSquareTable[0][square] + mobility * mobilityMG;
+                        egScore += bishopSquareTable[1][square] + mobility * mobilityEG;
                         if (attacks & blackKingZone) {
                             whiteKingAttackWeight += 2;
                             whiteKingAttackerCount++;
@@ -539,9 +582,10 @@ static inline int evaluate(Board *board) {
                 case R:
                     {
                         U64 attacks = getRookAttacks(square, board->occupancies[both]);
-                        mobility = countBits(attacks);
-                        mgScore += rookSquareTable[0][square] + mobility * 3;
-                        egScore += rookSquareTable[1][square] + mobility * 5;
+                        whiteAttacks |= attacks;
+                        mobility = countBits(attacks & ~board->occupancies[white] & ~blackPawnAttacks);
+                        mgScore += rookSquareTable[0][square] + mobility * mobilityMG;
+                        egScore += rookSquareTable[1][square] + mobility * mobilityEG;
                         if (attacks & blackKingZone) {
                             whiteKingAttackWeight += 3;
                             whiteKingAttackerCount++;
@@ -583,9 +627,10 @@ static inline int evaluate(Board *board) {
                 case Q:
                     {
                         U64 attacks = getQueenAttacks(square, board->occupancies[both]);
-                        mobility = countBits(attacks);
-                        mgScore += queenSquareTable[0][square] + mobility * 3;
-                        egScore += queenSquareTable[1][square] + mobility * 5;
+                        whiteAttacks |= attacks;
+                        mobility = countBits(attacks & ~board->occupancies[white] & ~blackPawnAttacks);
+                        mgScore += queenSquareTable[0][square] + mobility * mobilityMG;
+                        egScore += queenSquareTable[1][square] + mobility * mobilityEG;
                         if (attacks & blackKingZone) {
                             whiteKingAttackWeight += 5;
                             whiteKingAttackerCount++;
@@ -622,6 +667,15 @@ static inline int evaluate(Board *board) {
                                 egScore -= doublePawnPenalty;
                                 break;
                             }
+                        }
+                    }
+
+                    {
+                        int pFile = square % 8;
+                        int pRank = square / 8;
+                        if (pFile < 7 && (board->bitboards[p] & (1ULL << (pRank * 8 + pFile + 1)))) {
+                            mgScore -= pawnDuoBonus[0];
+                            egScore -= pawnDuoBonus[1];
                         }
                     }
 
@@ -672,19 +726,23 @@ static inline int evaluate(Board *board) {
                     break;
 
                 case n:
-                    mobility = countBits(knightAttacks[square] & ~board->occupancies[black]);
-                    mgScore -= (knightSquareTable[0][mirrorSquare[square]] + mobility * 3);
-                    egScore -= (knightSquareTable[1][mirrorSquare[square]] + mobility * 5);
-
-                    if (knightAttacks[square] & whiteKingZone) {
-                        blackKingAttackWeight += 2;
-                        blackKingAttackerCount++;
-                    }
-
                     {
+                        U64 attacks = knightAttacks[square];
+                        blackAttacks |= attacks;
+                        mobility = countBits(attacks & ~board->occupancies[black] & ~whitePawnAttacks);
+                        mgScore -= (knightSquareTable[0][mirrorSquare[square]] + mobility * mobilityMG);
+                        egScore -= (knightSquareTable[1][mirrorSquare[square]] + mobility * mobilityEG);
+
+                        if (attacks & whiteKingZone) {
+                            blackKingAttackWeight += 2;
+                            blackKingAttackerCount++;
+                        }
+
                         int knightRank = square / 8;
-                        if (knightRank >= 2 && knightRank <= 4 &&
-                            (isolatedPawnMasks[square] & passedPawnMasks[black][square] & board->bitboards[P]) == 0) {
+                        bool onOutpost = knightRank >= 2 && knightRank <= 4;
+                        bool defendedByPawn = blackPawnAttacks & (1ULL << square);
+                        bool canBeKicked = (isolatedPawnMasks[square] & passedPawnMasks[black][square] & board->bitboards[P]) != 0;
+                        if (onOutpost && defendedByPawn && !canBeKicked) {
                             mgScore -= knightOutpostBonus[0];
                             egScore -= knightOutpostBonus[1];
                         }
@@ -694,9 +752,10 @@ static inline int evaluate(Board *board) {
                 case b:
                     {
                         U64 attacks = getBishopAttacks(square, board->occupancies[both]);
-                        mobility = countBits(attacks);
-                        mgScore -= (bishopSquareTable[0][mirrorSquare[square]] + mobility * 3);
-                        egScore -= (bishopSquareTable[1][mirrorSquare[square]] + mobility * 5);
+                        blackAttacks |= attacks;
+                        mobility = countBits(attacks & ~board->occupancies[black] & ~whitePawnAttacks);
+                        mgScore -= (bishopSquareTable[0][mirrorSquare[square]] + mobility * mobilityMG);
+                        egScore -= (bishopSquareTable[1][mirrorSquare[square]] + mobility * mobilityEG);
                         if (attacks & whiteKingZone) {
                             blackKingAttackWeight += 2;
                             blackKingAttackerCount++;
@@ -711,9 +770,10 @@ static inline int evaluate(Board *board) {
                 case r:
                     {
                         U64 attacks = getRookAttacks(square, board->occupancies[both]);
-                        mobility = countBits(attacks);
-                        mgScore -= (rookSquareTable[0][mirrorSquare[square]] + mobility * 3);
-                        egScore -= (rookSquareTable[1][mirrorSquare[square]] + mobility * 5);
+                        blackAttacks |= attacks;
+                        mobility = countBits(attacks & ~board->occupancies[black] & ~whitePawnAttacks);
+                        mgScore -= (rookSquareTable[0][mirrorSquare[square]] + mobility * mobilityMG);
+                        egScore -= (rookSquareTable[1][mirrorSquare[square]] + mobility * mobilityEG);
                         if (attacks & whiteKingZone) {
                             blackKingAttackWeight += 3;
                             blackKingAttackerCount++;
@@ -755,9 +815,10 @@ static inline int evaluate(Board *board) {
                 case q:
                     {
                         U64 attacks = getQueenAttacks(square, board->occupancies[both]);
-                        mobility = countBits(attacks);
-                        mgScore -= (queenSquareTable[0][mirrorSquare[square]] + mobility * 3);
-                        egScore -= (queenSquareTable[1][mirrorSquare[square]] + mobility * 5);
+                        blackAttacks |= attacks;
+                        mobility = countBits(attacks & ~board->occupancies[black] & ~whitePawnAttacks);
+                        mgScore -= (queenSquareTable[0][mirrorSquare[square]] + mobility * mobilityMG);
+                        egScore -= (queenSquareTable[1][mirrorSquare[square]] + mobility * mobilityEG);
                         if (attacks & whiteKingZone) {
                             blackKingAttackWeight += 5;
                             blackKingAttackerCount++;
@@ -802,6 +863,169 @@ static inline int evaluate(Board *board) {
     if (blackKingAttackerCount >= 2) {
         int idx = std::min(blackKingAttackWeight, 29);
         mgScore -= kingSafetyTable[idx];
+    }
+
+    // --- Threats: hanging pieces and minor/rook threats ---
+    {
+        U64 whiteMinorAttacks = 0ULL, blackMinorAttacks = 0ULL;
+        U64 tmp;
+        tmp = board->bitboards[N];
+        while (tmp) { int sq = getLSBindex(tmp); whiteMinorAttacks |= knightAttacks[sq]; popBit(tmp, sq); }
+        tmp = board->bitboards[B];
+        while (tmp) { int sq = getLSBindex(tmp); whiteMinorAttacks |= getBishopAttacks(sq, board->occupancies[both]); popBit(tmp, sq); }
+        tmp = board->bitboards[n];
+        while (tmp) { int sq = getLSBindex(tmp); blackMinorAttacks |= knightAttacks[sq]; popBit(tmp, sq); }
+        tmp = board->bitboards[b];
+        while (tmp) { int sq = getLSBindex(tmp); blackMinorAttacks |= getBishopAttacks(sq, board->occupancies[both]); popBit(tmp, sq); }
+
+        U64 whiteRookAttacks = 0ULL, blackRookAttacks = 0ULL;
+        tmp = board->bitboards[R];
+        while (tmp) { int sq = getLSBindex(tmp); whiteRookAttacks |= getRookAttacks(sq, board->occupancies[both]); popBit(tmp, sq); }
+        tmp = board->bitboards[r];
+        while (tmp) { int sq = getLSBindex(tmp); blackRookAttacks |= getRookAttacks(sq, board->occupancies[both]); popBit(tmp, sq); }
+
+        U64 blackPieces = board->occupancies[black] & ~board->bitboards[k];
+        U64 whitePieces = board->occupancies[white] & ~board->bitboards[K];
+
+        // White minor attacks on black R/Q
+        U64 minorThreatsW = whiteMinorAttacks & (board->bitboards[r] | board->bitboards[q]);
+        int threatCountW = countBits(minorThreatsW);
+        mgScore += threatCountW * threatByMinor[0];
+        egScore += threatCountW * threatByMinor[1];
+
+        // White rook attacks on black Q
+        U64 rookThreatsW = whiteRookAttacks & board->bitboards[q];
+        int rookThreatCountW = countBits(rookThreatsW);
+        mgScore += rookThreatCountW * threatByRook[0];
+        egScore += rookThreatCountW * threatByRook[1];
+
+        // Black minor attacks on white R/Q
+        U64 minorThreatsB = blackMinorAttacks & (board->bitboards[R] | board->bitboards[Q]);
+        int threatCountB = countBits(minorThreatsB);
+        mgScore -= threatCountB * threatByMinor[0];
+        egScore -= threatCountB * threatByMinor[1];
+
+        // Black rook attacks on white Q
+        U64 rookThreatsB = blackRookAttacks & board->bitboards[Q];
+        int rookThreatCountB = countBits(rookThreatsB);
+        mgScore -= rookThreatCountB * threatByRook[0];
+        egScore -= rookThreatCountB * threatByRook[1];
+
+        // Hanging pieces: attacked by enemy but not defended
+        U64 whiteHanging = whitePieces & blackAttacks & ~whiteAttacks;
+        U64 blackHanging = blackPieces & whiteAttacks & ~blackAttacks;
+        mgScore += countBits(whiteHanging) * hangingPenalty[0];
+        egScore += countBits(whiteHanging) * hangingPenalty[1];
+        mgScore -= countBits(blackHanging) * hangingPenalty[0];
+        egScore -= countBits(blackHanging) * hangingPenalty[1];
+
+        // Pawn push threats: pawns that can advance to attack enemy pieces
+        U64 whitePawnPush = ((board->bitboards[P] << 8) & ~board->occupancies[both]);
+        U64 whitePushAttacks = (((whitePawnPush & ~0xFF00000000000000ULL) << 7) & ~fileMasks[7]) |
+                               (((whitePawnPush & ~0xFF00000000000000ULL) << 9) & ~fileMasks[0]);
+        U64 whitePushThreats = whitePushAttacks & blackPieces & ~blackPawnAttacks;
+        mgScore += countBits(whitePushThreats) * pawnPushThreat;
+
+        U64 blackPawnPush = ((board->bitboards[p] >> 8) & ~board->occupancies[both]);
+        U64 blackPushAttacks = (((blackPawnPush & ~0x00000000000000FFULL) >> 7) & ~fileMasks[0]) |
+                               (((blackPawnPush & ~0x00000000000000FFULL) >> 9) & ~fileMasks[7]);
+        U64 blackPushThreats = blackPushAttacks & whitePieces & ~whitePawnAttacks;
+        mgScore -= countBits(blackPushThreats) * pawnPushThreat;
+    }
+
+    // --- Space evaluation (MG only) ---
+    {
+        const U64 whiteSpaceArea = 0x00003C3C3C3C0000ULL;
+        const U64 blackSpaceArea = 0x0000003C3C3C3C00ULL;
+
+        U64 whiteSafe = whiteSpaceArea & ~blackPawnAttacks & ~board->bitboards[p];
+        U64 blackSafe = blackSpaceArea & ~whitePawnAttacks & ~board->bitboards[P];
+
+        int whiteSpace = countBits(whiteSafe & (whiteAttacks | ~blackAttacks));
+        int blackSpace = countBits(blackSafe & (blackAttacks | ~whiteAttacks));
+        mgScore += (whiteSpace - blackSpace) * spaceBonus;
+    }
+
+    // --- Pawn storm on enemy king ---
+    {
+        int bkFile = blackKingSq % 8;
+        U64 stormPawns = board->bitboards[P];
+        while (stormPawns) {
+            int sq = getLSBindex(stormPawns);
+            int file = sq % 8;
+            int rank = sq / 8;
+            if (std::abs(file - bkFile) <= 1) {
+                mgScore += pawnStormBonus[rank];
+            }
+            popBit(stormPawns, sq);
+        }
+
+        int wkFile = whiteKingSq % 8;
+        stormPawns = board->bitboards[p];
+        while (stormPawns) {
+            int sq = getLSBindex(stormPawns);
+            int file = sq % 8;
+            int rank = 7 - sq / 8;
+            if (std::abs(file - wkFile) <= 1) {
+                mgScore -= pawnStormBonus[rank];
+            }
+            popBit(stormPawns, sq);
+        }
+    }
+
+    // --- Center control ---
+    {
+        const U64 CENTER = (1ULL << e4) | (1ULL << d4) | (1ULL << e5) | (1ULL << d5);
+        int whiteCenterCtrl = countBits(whiteAttacks & CENTER);
+        int blackCenterCtrl = countBits(blackAttacks & CENTER);
+        mgScore += (whiteCenterCtrl - blackCenterCtrl) * centerControlBonus[0];
+        egScore += (whiteCenterCtrl - blackCenterCtrl) * centerControlBonus[1];
+    }
+
+    // --- Connected rooks ---
+    {
+        U64 whiteRooks = board->bitboards[R];
+        if (countBits(whiteRooks) >= 2) {
+            int r1 = getLSBindex(whiteRooks);
+            popBit(whiteRooks, r1);
+            int r2 = getLSBindex(whiteRooks);
+            U64 r1attacks = getRookAttacks(r1, board->occupancies[both]);
+            if (r1attacks & (1ULL << r2)) {
+                mgScore += connectedRookBonus[0];
+                egScore += connectedRookBonus[1];
+            }
+        }
+        U64 blackRooks = board->bitboards[r];
+        if (countBits(blackRooks) >= 2) {
+            int r1 = getLSBindex(blackRooks);
+            popBit(blackRooks, r1);
+            int r2 = getLSBindex(blackRooks);
+            U64 r1attacks = getRookAttacks(r1, board->occupancies[both]);
+            if (r1attacks & (1ULL << r2)) {
+                mgScore -= connectedRookBonus[0];
+                egScore -= connectedRookBonus[1];
+            }
+        }
+    }
+
+    // --- King adjacent open file penalty ---
+    {
+        int wkFile = whiteKingSq % 8;
+        for (int f = std::max(0, wkFile - 1); f <= std::min(7, wkFile + 1); f++) {
+            if (f == wkFile) continue;
+            U64 adjFileMask = fileMasks[f];
+            if (((board->bitboards[P] | board->bitboards[p]) & adjFileMask) == 0) {
+                mgScore += kingAdjacentOpenFile;
+            }
+        }
+        int bkFile = blackKingSq % 8;
+        for (int f = std::max(0, bkFile - 1); f <= std::min(7, bkFile + 1); f++) {
+            if (f == bkFile) continue;
+            U64 adjFileMask = fileMasks[f];
+            if (((board->bitboards[P] | board->bitboards[p]) & adjFileMask) == 0) {
+                mgScore -= kingAdjacentOpenFile;
+            }
+        }
     }
 
     if (phase <= 3 && insufficientMaterial(board)) {

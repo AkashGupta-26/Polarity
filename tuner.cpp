@@ -50,6 +50,8 @@ double computeErrorChunk(const std::vector<TunePosition>& positions, int start, 
     return totalError;
 }
 
+void syncBlackPieceValues();
+
 double computeError(const std::vector<TunePosition>& positions) {
     int n = positions.size();
     int chunkSize = n / NUM_THREADS;
@@ -187,12 +189,34 @@ void registerParams(std::vector<TuneParam>& params) {
 
     reg(&blockedPasserPenalty[0], "blockedPasserPenalty_MG", -25, 0);
     reg(&blockedPasserPenalty[1], "blockedPasserPenalty_EG", -40, 0);
+
+    // Piece values (white only; black mirrors at eval time)
+    // pieceValue[MG][P,N,B,R,Q]  pieceValue[EG][P,N,B,R,Q]
+    reg(&pieceValue[0][0], "pieceValue_MG_P", 50, 150);
+    reg(&pieceValue[0][1], "pieceValue_MG_N", 250, 450);
+    reg(&pieceValue[0][2], "pieceValue_MG_B", 250, 450);
+    reg(&pieceValue[0][3], "pieceValue_MG_R", 350, 600);
+    reg(&pieceValue[0][4], "pieceValue_MG_Q", 800, 1200);
+    reg(&pieceValue[1][0], "pieceValue_EG_P", 60, 150);
+    reg(&pieceValue[1][1], "pieceValue_EG_N", 200, 400);
+    reg(&pieceValue[1][2], "pieceValue_EG_B", 200, 400);
+    reg(&pieceValue[1][3], "pieceValue_EG_R", 400, 650);
+    reg(&pieceValue[1][4], "pieceValue_EG_Q", 750, 1100);
+
+    // Mobility multipliers
+    reg(&mobilityMG, "mobilityMG", 1, 8);
+    reg(&mobilityEG, "mobilityEG", 1, 10);
+
+    // King safety table (first 15 entries — the steep part of the curve)
+    for (int i = 2; i <= 14; i++) {
+        reg(&kingSafetyTable[i], "kingSafety_" + std::to_string(i), 0, 500);
+    }
 }
 
 void computeGradients(std::vector<TunePosition>& positions, std::vector<TuneParam>& params, int step) {
+    syncBlackPieceValues();
     double baseError = computeError(positions);
 
-    std::vector<std::thread> threads;
     int numParams = params.size();
 
     for (int i = 0; i < numParams; i++) {
@@ -201,8 +225,10 @@ void computeGradients(std::vector<TunePosition>& positions, std::vector<TunePara
         if (newVal == original) newVal = std::max(original - step, params[i].minVal);
 
         *params[i].ptr = newVal;
+        syncBlackPieceValues();
         double newError = computeError(positions);
         *params[i].ptr = original;
+        syncBlackPieceValues();
 
         params[i].gradient = (newError - baseError) / (newVal - original);
     }
@@ -260,6 +286,7 @@ void adamOptimize(std::vector<TunePosition>& positions, std::vector<TuneParam>& 
             }
         }
 
+        syncBlackPieceValues();
         double currentError = computeError(positions);
 
         if (currentError < bestError) {
@@ -292,6 +319,7 @@ void adamOptimize(std::vector<TunePosition>& positions, std::vector<TuneParam>& 
 }
 
 void localSearch(std::vector<TunePosition>& positions, std::vector<TuneParam>& params) {
+    syncBlackPieceValues();
     double bestError = computeError(positions);
     std::cout << "\nLocal search refinement from error: " << bestError << std::endl;
 
@@ -308,6 +336,7 @@ void localSearch(std::vector<TunePosition>& positions, std::vector<TuneParam>& p
 
             if (original + 1 <= p.maxVal) {
                 *p.ptr = original + 1;
+                syncBlackPieceValues();
                 double err = computeError(positions);
                 if (err < bestError) {
                     bestError = err;
@@ -318,6 +347,7 @@ void localSearch(std::vector<TunePosition>& positions, std::vector<TuneParam>& p
 
             if (original - 1 >= p.minVal) {
                 *p.ptr = original - 1;
+                syncBlackPieceValues();
                 double err = computeError(positions);
                 if (err < bestError) {
                     bestError = err;
@@ -327,6 +357,7 @@ void localSearch(std::vector<TunePosition>& positions, std::vector<TuneParam>& p
             }
 
             *p.ptr = original;
+            syncBlackPieceValues();
         }
 
         auto end = std::chrono::steady_clock::now();
@@ -337,12 +368,34 @@ void localSearch(std::vector<TunePosition>& positions, std::vector<TuneParam>& p
     std::cout << "Local search complete after " << epoch << " epochs, final error: " << bestError << std::endl;
 }
 
+void syncBlackPieceValues() {
+    for (int i = 0; i < 5; i++) {
+        pieceValue[0][i + 6] = -pieceValue[0][i];
+        pieceValue[1][i + 6] = -pieceValue[1][i];
+    }
+}
+
 void printResults(const std::vector<TuneParam>& params) {
+    syncBlackPieceValues();
+
     std::cout << "\n=== Tuned Values ===" << std::endl;
     for (const auto& p : params) {
         std::cout << p.name << " = " << *p.ptr << std::endl;
     }
     std::cout << "\n=== Copy-paste for evaluate.h ===" << std::endl;
+
+    // Piece values
+    std::cout << "pieceValue[2][12] = {" << std::endl << "    {";
+    for (int i = 0; i < 12; i++) std::cout << pieceValue[0][i] << (i < 11 ? ", " : "");
+    std::cout << "}," << std::endl << "    {";
+    for (int i = 0; i < 12; i++) std::cout << pieceValue[1][i] << (i < 11 ? ", " : "");
+    std::cout << "}" << std::endl << "};" << std::endl;
+
+    // Mobility
+    std::cout << "mobilityMG = " << mobilityMG << ";" << std::endl;
+    std::cout << "mobilityEG = " << mobilityEG << ";" << std::endl;
+
+    // Existing params
     std::cout << "doublePawnPenalty = " << doublePawnPenalty << ";" << std::endl;
     std::cout << "isolatedPawnPenalty = " << isolatedPawnPenalty << ";" << std::endl;
     std::cout << "passedPawnBonus[2][8] = {" << std::endl;
@@ -367,6 +420,15 @@ void printResults(const std::vector<TuneParam>& params) {
     std::cout << "connectedPassedBonus[2] = {" << connectedPassedBonus[0] << ", " << connectedPassedBonus[1] << "};" << std::endl;
     std::cout << "badBishopPenalty[2] = {" << badBishopPenalty[0] << ", " << badBishopPenalty[1] << "};" << std::endl;
     std::cout << "blockedPasserPenalty[2] = {" << blockedPasserPenalty[0] << ", " << blockedPasserPenalty[1] << "};" << std::endl;
+
+    // King safety table
+    std::cout << "kingSafetyTable[] = {" << std::endl << "    ";
+    for (int i = 0; i < 30; i++) {
+        std::cout << kingSafetyTable[i];
+        if (i < 29) std::cout << ", ";
+        if (i % 10 == 9) std::cout << std::endl << "  ";
+    }
+    std::cout << std::endl << "};" << std::endl;
 }
 
 int main(int argc, char* argv[]) {

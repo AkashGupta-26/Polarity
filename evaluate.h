@@ -353,15 +353,49 @@ static inline int MopUpEvaluation(Board *board, int perspective, int friendlymat
     if (isMinorPieceEndgame(board))
         score += MinorPieceEvaluation(board, perspective) * 10;
     else
-        score += DistanceFromCentre[opponentKingSquare] * 10;
+        score += DistanceFromCentre[opponentKingSquare] * 15;
 
     int distbetweenKings = std::abs((opponentKingSquare / 8) - (friendlyKingSquare / 8)) +
                         std::abs((opponentKingSquare % 8) - (friendlyKingSquare % 8));
-    
-    score += (14 - distbetweenKings) * 4; // Encourage keeping kings close
-    return score * endgameWeight; // Scale score by endgame weight
+
+    score += (14 - distbetweenKings) * 8;
+
+    int matAdvantage = std::min(friendlymaterial - opponentmaterial, 500);
+    score = score * matAdvantage / 100;
+
+    return score * endgameWeight;
 }
 
+
+static inline int endgameScaleFactor(const Board *board, int score) {
+    int strongSide = (score > 0) ? white : black;
+    int strongPawns = countBits(board->bitboards[(strongSide == white) ? P : p]);
+
+    if (strongPawns == 0) {
+        int strongKnights = countBits(board->bitboards[(strongSide == white) ? N : n]);
+        int strongBishops = countBits(board->bitboards[(strongSide == white) ? B : b]);
+        int strongRooks = countBits(board->bitboards[(strongSide == white) ? R : r]);
+        int strongQueens = countBits(board->bitboards[(strongSide == white) ? Q : q]);
+        int strongMajor = strongRooks + strongQueens;
+
+        if (strongMajor == 0 && (strongKnights + strongBishops) <= 2) {
+            if (strongKnights + strongBishops <= 1) return 0;
+            if (strongKnights == 2) return 0;
+        }
+    }
+
+    int wb = countBits(board->bitboards[B]);
+    int bb = countBits(board->bitboards[b]);
+    if (wb == 1 && bb == 1 && strongPawns <= 2) {
+        int wbSq = getLSBindex(board->bitboards[B]);
+        int bbSq = getLSBindex(board->bitboards[b]);
+        bool wbLight = ((wbSq / 8) + (wbSq % 8)) % 2;
+        bool bbLight = ((bbSq / 8) + (bbSq % 8)) % 2;
+        if (wbLight != bbLight) return 50;
+    }
+
+    return 100;
+}
 
 static inline int evaluate(Board *board) {
     int mgScore = 0;
@@ -443,6 +477,10 @@ static inline int evaluate(Board *board) {
                         if (square + 8 < 64 && (board->occupancies[black] & (1ULL << (square + 8)))) {
                             mgScore += blockedPasserPenalty[0];
                             egScore += blockedPasserPenalty[1];
+                        } else if (rank >= 5 && square + 8 < 64 &&
+                                   !(board->occupancies[both] & (1ULL << (square + 8)))) {
+                            static const int freePasserBonus[] = {0, 0, 0, 0, 0, 20, 60, 0};
+                            egScore += freePasserBonus[rank];
                         }
 
                         U64 adjacentPassedFriendly = board->bitboards[P] & isolatedPawnMasks[square];
@@ -608,6 +646,10 @@ static inline int evaluate(Board *board) {
                         if (square - 8 >= 0 && (board->occupancies[white] & (1ULL << (square - 8)))) {
                             mgScore -= blockedPasserPenalty[0];
                             egScore -= blockedPasserPenalty[1];
+                        } else if (rank >= 5 && square - 8 >= 0 &&
+                                   !(board->occupancies[both] & (1ULL << (square - 8)))) {
+                            static const int freePasserBonus[] = {0, 0, 0, 0, 0, 20, 60, 0};
+                            egScore -= freePasserBonus[rank];
                         }
 
                         U64 adjacentPassedFriendly = board->bitboards[p] & isolatedPawnMasks[square];
@@ -769,6 +811,11 @@ static inline int evaluate(Board *board) {
     egScore += mopUpScore;
     phase = std::min(24, phase);
     score = (mgScore * phase + egScore * (24 - phase)) / 24;
+
+    int scaleFactor = endgameScaleFactor(board, score);
+    if (scaleFactor < 100)
+        score = score * scaleFactor / 100;
+
     score += (board->sideToMove == white) ? tempoBonus : -tempoBonus;
     return board->sideToMove == white ? score : -score;
 }

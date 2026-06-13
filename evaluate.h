@@ -480,7 +480,10 @@ static inline int evaluate(Board *board) {
                         } else if (rank >= 5 && square + 8 < 64 &&
                                    !(board->occupancies[both] & (1ULL << (square + 8)))) {
                             static const int freePasserBonus[] = {0, 0, 0, 0, 0, 20, 60, 0};
-                            egScore += freePasserBonus[rank];
+                            int file = square % 8;
+                            int bonus = freePasserBonus[rank];
+                            if (file == 0 || file == 7) bonus /= 2;
+                            egScore += bonus;
                         }
 
                         U64 adjacentPassedFriendly = board->bitboards[P] & isolatedPawnMasks[square];
@@ -649,7 +652,10 @@ static inline int evaluate(Board *board) {
                         } else if (rank >= 5 && square - 8 >= 0 &&
                                    !(board->occupancies[both] & (1ULL << (square - 8)))) {
                             static const int freePasserBonus[] = {0, 0, 0, 0, 0, 20, 60, 0};
-                            egScore -= freePasserBonus[rank];
+                            int file = square % 8;
+                            int bonus = freePasserBonus[rank];
+                            if (file == 0 || file == 7) bonus /= 2;
+                            egScore -= bonus;
                         }
 
                         U64 adjacentPassedFriendly = board->bitboards[p] & isolatedPawnMasks[square];

@@ -7,6 +7,9 @@ I am trying to build a modular engine for easy and efficient debugging, so the p
 - `precalculated_move_tables.h` - Contains the precalculated move tables.
 - `board.h` - Contains the board representation and logic.
 - `constants.h` - Contains the constants used in the engine.
+- `evaluate.h` - Contains all evaluation logic, piece-square tables, and eval parameters.
+- `search.h` - Contains the search algorithm and pruning techniques.
+- `tuner.cpp` - Texel tuner for optimizing evaluation parameters.
 
 ---
 
@@ -72,31 +75,79 @@ The `makeMove` function performs the move on board, updates the board state and 
 ---
 ## Evaluation
 
-We are using a tapered evaluation scheme based on `PeSTO` tables, with middlegame and endgame weights. The evaluation is done using a simple piece-square table, which is a common approach in chess engines. The piece-square table is used to evaluate the position of the pieces on the board, and the weights are used to adjust the evaluation based on the phase of the game (middlegame or endgame). We are also using file masks for detecting passed pawns, and a simple king safety evaluation based on the number of pawns around the king. 
+We are using a tapered evaluation scheme based on `PeSTO` tables, with separate middlegame and endgame weights that blend based on material phase. The evaluation has grown quite a bit from the basic piece-square tables — here's what we've got:
 
-For endgame checkmates, we are using a `Mop-Up Evaluation`, which encourages the king to close down on the enemy king towards the edges and corners of the board and restricts it's movement. This is done by calculating a simple Manhattan distance between the two kings and adjusting the evaluation based on the distance. This helps for quickly checkmating the opponent in finding Rook and Bishop checkmates.
+**Pawn Structure** — We detect doubled pawns, isolated pawns, backward pawns, passed pawns, connected passers, and blocked passers. Passed pawns get bonuses that scale with rank, and we also factor in king proximity to passers in the endgame. Free passers (no blocker in front) get an extra bonus, halved for rook pawns since they're harder to promote. We also give a small bonus for pawn duos (adjacent friendly pawns on the same rank).
+
+**Piece Evaluation** — Beyond the piece-square tables, we evaluate bishop pairs, bad bishops (pawns on the same color), knight outposts (defended by a pawn and can't be kicked by an enemy pawn), and rooks on open/semi-open files, the 7th rank, and behind passed pawns.
+
+**Mobility** — We compute safe mobility for each piece: the number of squares a piece can reach that aren't occupied by friendly pieces and aren't defended by enemy pawns. This gives a much more accurate picture of piece activity than just counting all reachable squares.
+
+**Threats** — We build per-side attack bitboards during the eval loop, which lets us detect hanging pieces (attacked but not defended), minor pieces threatening rooks or queens, and pawn push threats (pawns that can advance to attack undefended enemy pieces). This was one of the biggest Elo gainers.
+
+**King Safety** — We track how many pieces are attacking the enemy king zone, weighted by piece type (queen attacks count more than knight attacks). If two or more pieces are attacking, we look up a penalty from a king safety table. We also penalize missing pawn shields and score pawn storms (friendly pawns advancing on the enemy king's file). Open and semi-open files adjacent to the king add extra penalties.
+
+**Space** — In the middlegame, we evaluate territorial control behind the pawn front on central files. Squares that are safe from enemy pawn attacks and either attacked by our pieces or uncontested by the opponent count as space.
+
+**Endgame** — We use a `Mop-Up Evaluation` that encourages the winning side to push the enemy king towards the edges and corners. This is done by calculating Manhattan distance between the kings and adjusting the evaluation. We also have scaling factors for drawish endgames like opposite-color bishop endings, and detect insufficient material for automatic draws.
+
+**Texel Tuning** — All 62+ evaluation parameters are tunable via a Texel tuner (`tuner.cpp`) that uses Adam optimization with local search refinement. The tuner takes FEN positions with game outcomes, finds the optimal sigmoid constant K, then iterates to minimize mean squared error between predicted and actual game results.
 
 ---
 ## Search
 
-I am using a minimax search with alpha-beta pruning. The search is done using a simple iterative deepening approach, which allows for a quick response time and a good search depth. The search is also using a simple transposition table to store previously searched positions, which helps to avoid redundant searches.
+I am using a negamax search with alpha-beta pruning. The search is done using iterative deepening, which allows for a quick response time and progressively deeper searches. The search uses a transposition table to store previously searched positions, avoiding redundant work.
 
-Multiple techniques such as `Null Move Pruning`, `Late Move Reductions`, and `Quiescence Search` are implemented to improve the search efficiency. The search is also using a simple move ordering technique, which helps to improve the search efficiency by searching the best moves first. Move ordering is done using `Most Valuable Victim - Least Valuable Aggressor` (MVV-LVA) heuristic. We are also storing History Moves, Killer Moves and Principal Variation (PV) moves to improve the move ordering.
+Multiple techniques are implemented to improve the search efficiency:
 
-- `Quiescence Search` is used to search for captures only, which helps to avoid the horizon effect and allows for a more accurate evaluation.
-- `Move Ordering` is done using the MVV-LVA heuristic, which orders the moves based on the value of the captured piece and the value of the attacking piece. This helps to improve the search efficiency by searching the most promising moves first. This may seem to result in a loss of tactical awareness and may seem to avoid variations that involve sacrifices. However, the engine is able to search deeper and will ultimately find the tactics most of the time. To mitigate this, we are also using a simple history heuristic along with killer moves to order the moves based on their previous success.
-- Along with this, the `Principal Variation` (PV) search is used to store the best moves found so far, which helps to improve the search efficiency by searching the best moves first.
-- `Transposition Tables` are used to store previously searched positions, which helps to avoid redundant searches and improve the search efficiency. The transposition table is implemented using a simple hash table, which stores the position and the evaluation of the position.
-- `Null Move Pruning` is basically evaluating positions after giving your opponent a free move. If the position is still good for us, we may conclude that the move chosen earlier in the tree was not as good and thus we can prune the search tree as our opponent won't chose that move either.
-- `Late Move Reductions` assume that our move ordering is good enough that we can reduce the search depth for moves that are not in the top few moves. This helps to improve the search efficiency by reducing the search depth for less promising moves.
-- We are also using `aspiration windows`, which are narrow windows around the expected value of a position. This helps to reduce the search space and improve the search efficiency as we can prune so many moves. However, if the resulting evaluation was still outside bounds, we will have to re-search the position with a wider window. This follows the idea that proving a move is bad is generally faster than proving a move is good, and thus we can quickly prune the search space, but obviously they may lead to redundant searches.
+- `Quiescence Search` — Extends the search at leaf nodes to include captures and check evasions, which helps avoid the horizon effect and allows for a more accurate evaluation.
+- `Move Ordering` — Done using the MVV-LVA heuristic for captures, which orders moves based on the value of the captured piece and the attacking piece. For quiet moves, we use the transposition table move first, then killer moves, then countermove history, then general history heuristic. Good move ordering is critical because it lets alpha-beta prune much more effectively.
+- `Principal Variation Search` — We use a PV search approach where we search the first move with a full window and subsequent moves with a null window, re-searching with a full window only if the null window search fails high. This is faster than searching every move with a full window.
+- `Transposition Tables` — Store previously searched positions with their evaluations, best moves, and depth. We use a replacement scheme that prefers deeper entries, and the hash move from the TT is never pruned by any pruning technique since it's likely the best move.
+- `Null Move Pruning` — We evaluate positions after giving the opponent a free move. If the position is still good for us even after skipping our turn, we can assume the current branch is strong and prune it. This works because having the right to move is almost always an advantage.
+- `Late Move Reductions` — We assume our move ordering is good enough that moves searched later in the list are unlikely to be good. So we search them at reduced depth first, and only re-search at full depth if they surprise us.
+- `Reverse Futility Pruning` — If the static evaluation is so far above beta that even a significant drop wouldn't change the result, we can prune the subtree. We extend this up to depth 6 with tighter margins at higher depths.
+- `Aspiration Windows` — We use narrow windows around the expected value, widening gradually if the search fails outside bounds. The widening follows a scaling pattern (starting tight at 25 centipawns and growing by 1.5x on each failure) rather than immediately falling back to a full window. This helps reduce the search space significantly.
+- `Countermove History` — For each piece-to-square combination, we track which move tends to refute it. This provides another layer of move ordering beyond killer moves and general history.
 
 ---
 ## Version History
 
+### Polarity V14
+- Added per-side attack bitboards for threat detection and safe mobility.
+- Mobility now excludes squares defended by enemy pawns (safe mobility).
+- Added threat evaluation: minor pieces threatening rooks/queens, hanging pieces, pawn push threats.
+- Added space evaluation for central territory control in middlegame.
+- Added pawn storm bonus for pawns advancing on enemy king files.
+- Fixed knight outpost logic — now requires pawn support and can't be kicked by enemy pawns.
+- Added center control, connected rooks, pawn duo, and king adjacent open file bonuses.
+- +42 Elo points than V13.
+
+### Polarity V13
+- Halved free passer bonus for rook pawns (a/h file) since they're harder to promote.
+- Added free passer bonus for passed pawns with no blocker in front.
+- Improved mop-up evaluation with stronger edge-pushing weights.
+- Added endgame scaling for drawish positions (opposite color bishops, etc.).
+- +15 Elo points than V12.
+
+### Polarity V12
+- Never prune the TT/hash move in LMP/futility — it's almost always the best move.
+- Extended reverse futility pruning up to depth 6 with tighter margins.
+- Added countermove history for better quiet move ordering.
+- Improved aspiration window scaling with gradual widening (1.5x growth instead of fixed steps).
+- +30 Elo points than V11.
+
+### Polarity V11
+- Retuned all eval parameters on a 500k position dataset using the Texel tuner.
+- Added Texel tuner (Adam optimization + local search) for automated parameter tuning.
+- Added bad bishop penalty and blocked passer detection.
+- Added king attack zone evaluation with weighted piece attacks and safety table.
+- Fixed duplicate evaluation component counting.
+- +56 Elo points than V10.
+
 ### Polarity V10
-- fixed MATEVALUE bug in 50 move rule detection.
-- incremented depth above quiescence search.
+- Fixed MATEVALUE bug in 50 move rule detection.
+- Incremented depth above quiescence search.
 - +35 Elo points than V9.
 
 ### Polarity V9

@@ -9,11 +9,11 @@ DEPFLAGS := -MMD -MP
 STATICFLAGS := -static -static-libgcc -static-libstdc++
 
 # Source and object files
-SRCS := engine.cpp perftValidate.cpp
+SRCS := engine.cpp perftValidate.cpp match.cpp
 OBJS := $(SRCS:.cpp=.o)
 DEPS := $(SRCS:.cpp=.d)
 
-TARGETS := engine perftValidate
+TARGETS := engine perftValidate match
 
 TUNER_SRC := tuner.cpp
 TUNER_OBJ := tuner.o
@@ -34,6 +34,9 @@ engine: engine.o
 
 perftValidate: perftValidate.o
 	$(CXX) $(CXXFLAGS) $(LDFLAGS) -o $@ $^
+
+match: match.o
+	$(CXX) $(CXXFLAGS) $(LDFLAGS) -pthread -o $@ $^
 
 tuner: CXXFLAGS += $(OPTFLAGS) -DTUNING_MODE
 tuner: LDFLAGS += $(STATICFLAGS)

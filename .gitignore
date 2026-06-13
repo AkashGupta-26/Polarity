@@ -81,3 +81,10 @@ helperFile.py
 blunders.txt
 diagram.png
 config.json
+
+# Built binaries (no extension)
+engine
+engine-main
+engine-search
+perftValidate
+match

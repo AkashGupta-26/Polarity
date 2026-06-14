@@ -1,15 +1,31 @@
 # Polarity  
 A fully functional chess engine built in C/C++
 
-I am trying to build a modular engine for easy and efficient debugging, so the project is split into several files. The main files are:
-- `engine.cpp` - The main engine file.
-- `moves.h` - Contains the move generation logic.
-- `precalculated_move_tables.h` - Contains the precalculated move tables.
-- `board.h` - Contains the board representation and logic.
-- `constants.h` - Contains the constants used in the engine.
-- `evaluate.h` - Contains all evaluation logic, piece-square tables, and eval parameters.
-- `search.h` - Contains the search algorithm and pruning techniques.
-- `tuner.cpp` - Texel tuner for optimizing evaluation parameters.
+The project is organized into two main folders:
+
+### `src/` — Engine Core
+- `engine.cpp` - UCI interface and main entry point.
+- `search.h` - Search algorithm (negamax, PVS, pruning, SEE).
+- `evaluate.h` - Static evaluation (PeSTO, pawn structure, king safety, mobility).
+- `moves.h` - Move generation logic.
+- `board.h` - Board representation, Zobrist hashing, transposition table.
+- `constants.h` - Types, enums, macros, and system utilities.
+- `precalculated_move_tables.h` - Magic bitboards and attack tables.
+- `random.h` - PRNG for Zobrist key generation.
+- `tuner.cpp` - Texel tuner for evaluation parameters.
+
+### `utilities/` — Tools
+- `perft.h` - Perft testing for move generation correctness.
+- `perftValidate.cpp` - Batch perft regression test runner.
+- `match.cpp` - Engine vs engine match runner.
+
+### Building
+```bash
+make engine              # Build with default name 'engine'
+make engine EXE=polarity # Build with custom output name
+make all                 # Build engine + utilities
+make clean               # Remove build artifacts
+```
 
 ---
 
@@ -100,12 +116,12 @@ I am using a negamax search with alpha-beta pruning. The search is done using it
 
 Multiple techniques are implemented to improve the search efficiency:
 
-- `Quiescence Search` — Extends the search at leaf nodes to include captures and check evasions, which helps avoid the horizon effect and allows for a more accurate evaluation.
-- `Move Ordering` — Done using the MVV-LVA heuristic for captures, which orders moves based on the value of the captured piece and the attacking piece. For quiet moves, we use the transposition table move first, then killer moves, then countermove history, then general history heuristic. Good move ordering is critical because it lets alpha-beta prune much more effectively.
+- `Quiescence Search` — Extends the search at leaf nodes to include captures, check evasions, and checkmate detection. Uses TT probing, SEE-based capture filtering, and delta pruning to avoid the horizon effect while keeping node count manageable.
+- `Move Ordering` — Done using SEE (Static Exchange Evaluation) for captures, which accurately evaluates whether a capture sequence wins or loses material. For quiet moves, we use the transposition table move first, then killer moves, then countermove history, then general history heuristic with gravity-based decay.
 - `Principal Variation Search` — We use a PV search approach where we search the first move with a full window and subsequent moves with a null window, re-searching with a full window only if the null window search fails high. This is faster than searching every move with a full window.
-- `Transposition Tables` — Store previously searched positions with their evaluations, best moves, and depth. We use a replacement scheme that prefers deeper entries, and the hash move from the TT is never pruned by any pruning technique since it's likely the best move.
-- `Null Move Pruning` — We evaluate positions after giving the opponent a free move. If the position is still good for us even after skipping our turn, we can assume the current branch is strong and prune it. This works because having the right to move is almost always an advantage.
-- `Late Move Reductions` — We assume our move ordering is good enough that moves searched later in the list are unlikely to be good. So we search them at reduced depth first, and only re-search at full depth if they surprise us.
+- `Transposition Tables` — Store previously searched positions with their evaluations, best moves, and depth. We use a replacement scheme that prefers deeper entries and protects exact-score entries, and the hash move from the TT is never pruned. TT cutoffs are disabled in PV nodes to preserve search accuracy.
+- `Null Move Pruning` — We evaluate positions after giving the opponent a free move with adaptive reduction (R=3+depth/6). If the position is still good for us even after skipping our turn, we can assume the current branch is strong and prune it. Only applied when static eval >= beta.
+- `Late Move Reductions` — We assume our move ordering is good enough that moves searched later in the list are unlikely to be good. So we search them at reduced depth (1 + moves/5 + depth/3), with less reduction for killer moves and PV nodes, and only re-search at full depth if they surprise us.
 - `Reverse Futility Pruning` — If the static evaluation is so far above beta that even a significant drop wouldn't change the result, we can prune the subtree. We extend this up to depth 6 with tighter margins at higher depths.
 - `Aspiration Windows` — We use narrow windows around the expected value, widening gradually if the search fails outside bounds. The widening follows a scaling pattern (starting tight at 25 centipawns and growing by 1.5x on each failure) rather than immediately falling back to a full window. This helps reduce the search space significantly.
 - `Countermove History` — For each piece-to-square combination, we track which move tends to refute it. This provides another layer of move ordering beyond killer moves and general history.
@@ -176,6 +192,8 @@ Multiple techniques are implemented to improve the search efficiency:
 | V2.10 | Endgame eval: free passer, mop-up, drawish scaling | +15 |
 | V2.10.1 | Rook pawn free passer halving | — |
 | V2.11 | Structural eval improvements | +42 |
+| V2.12 | Refactor codebase into src/ and utilities/ folders | — |
+| V2.13 | Search overhaul: SEE, repetition fix, adaptive NMP | +85 |
 
 ---
 ## Note on AI Assistance

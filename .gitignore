@@ -83,8 +83,10 @@ diagram.png
 config.json
 
 # Built binaries (no extension)
+build/
 engine
 engine-main
 engine-search
 perftValidate
 match
+tuner

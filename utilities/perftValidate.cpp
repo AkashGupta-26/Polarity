@@ -3,10 +3,10 @@
 #include <sstream>
 #include <string>
 #include <unordered_map>
-#include "constants.h"
-#include "board.h"
-#include "precalculated_move_tables.h"
-#include "moves.h"
+#include "../src/constants.h"
+#include "../src/board.h"
+#include "../src/precalculated_move_tables.h"
+#include "../src/moves.h"
 #include "perft.h"
 
 using namespace std;

@@ -2,7 +2,7 @@
 // #include "board.h"
 // #include "precalculated_move_tables.h"
 // #include "moves.h"
-#include "perft.h"
+#include "../utilities/perft.h"
 // #include "evaluate.h"
 #include "search.h"
 

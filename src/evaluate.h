@@ -5,7 +5,7 @@
 #include "board.h"
 #include "precalculated_move_tables.h"
 #include "moves.h"
-#include "perft.h"
+#include "../utilities/perft.h"
 
 #define MG 0
 #define EG 1

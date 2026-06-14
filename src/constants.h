@@ -189,7 +189,7 @@ int input_waiting() {
 
     if (isPipe) {
         if (!PeekNamedPipe(hStdin, NULL, 0, NULL, &dw, NULL))
-            return 1; // Error or closed pipe
+            return 0;
         return dw != 0;
     } else {
         GetNumberOfConsoleInputEvents(hStdin, &dw);

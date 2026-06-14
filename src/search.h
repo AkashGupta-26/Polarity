@@ -66,25 +66,9 @@ static void communicate(SearchUCI *searchParams) {
 // global initialization
 SearchUCI searchParams[1];
 
-// Least Valuable Aggressor Most Valuable Victim (MVV-LVA) table
-static int MvvLva[12][12] = {
- 	105, 205, 305, 405, 505, 605,  105, 205, 305, 405, 505, 605,
-	104, 204, 304, 404, 504, 604,  104, 204, 304, 404, 504, 604,
-	103, 203, 303, 403, 503, 603,  103, 203, 303, 403, 503, 603,
-	102, 202, 302, 402, 502, 602,  102, 202, 302, 402, 502, 602,
-	101, 201, 301, 401, 501, 601,  101, 201, 301, 401, 501, 601,
-	100, 200, 300, 400, 500, 600,  100, 200, 300, 400, 500, 600,
-
-	105, 205, 305, 405, 505, 605,  105, 205, 305, 405, 505, 605,
-	104, 204, 304, 404, 504, 604,  104, 204, 304, 404, 504, 604,
-	103, 203, 303, 403, 503, 603,  103, 203, 303, 403, 503, 603,
-	102, 202, 302, 402, 502, 602,  102, 202, 302, 402, 502, 602,
-	101, 201, 301, 401, 501, 601,  101, 201, 301, 401, 501, 601,
-	100, 200, 300, 400, 500, 600,  100, 200, 300, 400, 500, 600
-};
-
 // Maximum ply depth for search
 const int maxPly = 64;
+const int HISTORY_MAX = 8192;
 
 // Search parameters
 int ply; 
@@ -97,11 +81,13 @@ U64 hashBetaHits = 0;
 U64 hashMoveOrderHits = 0;
 
 // Late Move Reduction (LMR) parameters
-const int FullDepthMoves = 4; // Number of moves to search at full depth
-const int ReductionLimit = 3; // Maximum reduction depth
+const int FullDepthMoves = 4;
+const int ReductionLimit = 3;
 
 // Null Move pruning parameters
-const int NullMoveReduction = 2;
+static inline int nullMoveReduction(int depth) {
+    return 3 + depth / 6;
+}
 
 // Futility / late-move pruning margins (indexed by remaining depth)
 static const int futilityMargins[5] = {0, 100, 160, 250, 350};
@@ -113,6 +99,100 @@ static const int captureValue[12] = {
     82, 337, 365, 477, 1025, 0
 };
 
+// SEE piece values for static exchange evaluation
+static const int seeValues[12] = {
+    100, 300, 300, 500, 900, 20000,
+    100, 300, 300, 500, 900, 20000
+};
+
+static inline U64 getAttackersToSquare(const Board *board, int square, U64 occ) {
+    U64 attackers = 0ULL;
+    attackers |= pawnAttacks[black][square] & board->bitboards[P];
+    attackers |= pawnAttacks[white][square] & board->bitboards[p];
+    attackers |= knightAttacks[square] & (board->bitboards[N] | board->bitboards[n]);
+    attackers |= getBishopAttacks(square, occ) & (board->bitboards[B] | board->bitboards[b] | board->bitboards[Q] | board->bitboards[q]);
+    attackers |= getRookAttacks(square, occ) & (board->bitboards[R] | board->bitboards[r] | board->bitboards[Q] | board->bitboards[q]);
+    attackers |= kingAttacks[square] & (board->bitboards[K] | board->bitboards[k]);
+    return attackers & occ;
+}
+
+static inline int getLeastValuableAttacker(const Board *board, U64 attackers, int side, int &piece) {
+    int start = (side == white) ? P : p;
+    int end = (side == white) ? K : k;
+    for (int p = start; p <= end; ++p) {
+        U64 bb = attackers & board->bitboards[p];
+        if (bb) {
+            piece = p;
+            return __builtin_ctzll(bb);
+        }
+    }
+    return -1;
+}
+
+static inline int see(const Board *board, int move) {
+    int target = decodeTarget(move);
+    int from = decodeSource(move);
+    int movePiece = decodePiece(move);
+
+    int gain[32];
+    int depth_see = 0;
+
+    int capturedPiece = none;
+    if (decodeCapture(move)) {
+        if (decodeEnPassant(move)) {
+            capturedPiece = (board->sideToMove == white) ? p : P;
+        } else {
+            int startPiece = (board->sideToMove == white) ? p : P;
+            int endPiece = (board->sideToMove == white) ? k : K;
+            for (int bbPiece = startPiece; bbPiece <= endPiece; ++bbPiece) {
+                if (getBit(board->bitboards[bbPiece], target)) {
+                    capturedPiece = bbPiece;
+                    break;
+                }
+            }
+        }
+    }
+
+    gain[0] = (capturedPiece != none) ? seeValues[capturedPiece] : 0;
+    if (decodePromoted(move))
+        gain[0] += seeValues[(board->sideToMove == white) ? Q : q] - seeValues[P];
+
+    U64 occ = board->occupancies[both];
+    occ ^= (1ULL << from);
+    occ |= (1ULL << target);
+
+    U64 attackers = getAttackersToSquare(board, target, occ);
+    int side = board->sideToMove ^ 1;
+    int lastPieceValue = seeValues[movePiece];
+
+    while (1) {
+        depth_see++;
+        int piece;
+        U64 sideAttackers = attackers & board->occupancies[side];
+        if (!sideAttackers) break;
+
+        int sq = getLeastValuableAttacker(board, sideAttackers, side, piece);
+        if (sq == -1) break;
+
+        gain[depth_see] = lastPieceValue - gain[depth_see - 1];
+        lastPieceValue = seeValues[piece];
+
+        if (std::max(-gain[depth_see - 1], gain[depth_see]) < 0) break;
+
+        occ ^= (1ULL << sq);
+        attackers = getAttackersToSquare(board, target, occ);
+        side ^= 1;
+
+        if (depth_see >= 31) break;
+    }
+
+    while (--depth_see > 0) {
+        gain[depth_see - 1] = -std::max(-gain[depth_see - 1], gain[depth_see]);
+    }
+
+    return gain[0];
+}
+
 static inline int getCapturedPiece(const Board *board, int target) {
     int startPiece = (board->sideToMove == white) ? p : P;
     int endPiece = (board->sideToMove == white) ? k : K;
@@ -123,10 +203,11 @@ static inline int getCapturedPiece(const Board *board, int target) {
     return none;
 }
 
-static inline int lmrReduction(int depth, int movesSearched) {
-    int reduction = 1 + movesSearched / 6 + depth / 4;
+static inline int lmrReduction(int depth, int movesSearched, bool improving) {
+    int reduction = 1 + movesSearched / 5 + depth / 3;
+    if (!improving) reduction++;
     if (reduction > depth - 1) reduction = depth - 1;
-    if (reduction > 3) reduction = 3;
+    if (reduction < 1) reduction = 1;
     return reduction;
 }
 
@@ -137,6 +218,11 @@ int prevMovePiece[maxPly];
 int prevMoveTarget[maxPly];
 int staticEvalHistory[maxPly];
 
+static inline void updateHistory(int piece, int target, int bonus) {
+    int clamped = std::max(-HISTORY_MAX, std::min(HISTORY_MAX, bonus));
+    historyMoves[piece][target] += clamped - historyMoves[piece][target] * abs(clamped) / HISTORY_MAX;
+}
+
 // Table to store principal variation moves
 int PrincipalVariationLength[maxPly]; 
 int PrincipalVariationTable[maxPly][maxPly];
@@ -146,6 +232,7 @@ int followPrincipalVariation, scorePrincipalVariation;
 
 // debug repetition detection
 int foundRepetition = 0;
+int gameHistoryPly = 0;
 
 // Allows Principal Variation to be evaluated first
 static inline void enablePrincipalVariationScoring(Board *board, MoveList *list) {
@@ -171,24 +258,18 @@ static inline int scoreMove(Board *board, int move) {
     }
 
     if (decodeCapture(move)){
-        int capturedPiece = P;
-        if (decodeEnPassant(move)) return MvvLva[P][p];
-        int startPiece = (board->sideToMove == white) ? p : P;
-        int endPiece = (board->sideToMove == white) ? k : K;
-        for (int bbPiece = startPiece; bbPiece <= endPiece; ++bbPiece) {
-            if (getBit(board->bitboards[bbPiece], target)) {
-                capturedPiece = bbPiece;
-                break;
-            }
-        }
-        return MvvLva[piece][capturedPiece] + 10000;
+        int seeScore = see(board, move);
+        if (seeScore >= 0)
+            return 10000 + seeScore;
+        else
+            return seeScore;
     }
     else{
         if (killerMoves[0][ply] == move) return 9000;
         if (killerMoves[1][ply] == move) return 8000;
         if (ply > 0 && counterMoves[prevMovePiece[ply - 1]][prevMoveTarget[ply - 1]] == move)
             return 7000;
-        return historyMoves[piece][target] + 1000;
+        return historyMoves[piece][target];
     }
     return 0;
 }
@@ -226,12 +307,26 @@ static inline void sortMoves(Board *board, MoveList *list, int bestMove = 0) {
 }
 
 static inline int detectRepetition(Board *board) {
+    int count = 0;
     for (int i = std::max(0, repetitionIndex - 100); i < repetitionIndex; ++i) {
         if (repetitionTable[i] == board->zobristHash) {
-            return 1; // Repetition detected
+            if (i < gameHistoryPly)
+                return 1;
+            count++;
+            if (count >= 2)
+                return 1;
         }
     }
-    return 0; // No repetition
+    return 0;
+}
+
+static inline bool isGameHistoryRepetition(Board *board) {
+    for (int i = std::max(0, gameHistoryPly - 100); i < gameHistoryPly; ++i) {
+        if (repetitionTable[i] == board->zobristHash) {
+            return true;
+        }
+    }
+    return false;
 }
 
 static inline int numLegalMovesInPosition(Board *board) {
@@ -251,32 +346,52 @@ static inline int numLegalMovesInPosition(Board *board) {
 static inline int quiescenceSearch(Board *board, int alpha, int beta) {
 
     if ((searchedNodes & 2047) == 0) 
-        communicate(searchParams); // Communicate with the engine every 2048 nodes
+        communicate(searchParams);
 
-    // evaluate position
     searchedNodes++;
 
     if (ply > maxPly - 1) 
-        return evaluate(board); // Return evaluation if maximum ply is reached
+        return evaluate(board);
 
-    int eval = evaluate(board);
+    int ttMove = 0;
+    int ttScore = readHashEntry(board, &ttMove, alpha, beta, 0, ply);
+    if (ttScore != noHashEntry && ply)
+        return ttScore;
 
-    if (eval >= beta) 
-        return beta; // Beta cutoff fails high
+    int inCheck = isBoardInCheck(board);
 
-    if (eval > alpha) 
-        alpha = eval; // PV node
+    int eval = 0;
+    if (!inCheck) {
+        eval = evaluate(board);
+
+        if (eval >= beta) 
+            return beta;
+
+        if (eval > alpha) 
+            alpha = eval;
+    } else {
+        eval = -INFINITY;
+    }
 
     MoveList moveList;
     generateMoves(board, &moveList);
-    sortMoves(board, &moveList); // Sort moves by score
+    sortMoves(board, &moveList, ttMove);
 
-    copyBoard(board); // Backup the current board state
+    copyBoard(board);
+
+    int legalMoves = 0;
 
     for (int count = 0; count < moveList.count; ++count) {
         int move = moveList.moves[count];
 
-        if (decodeCapture(move)) {
+        bool isCapture = decodeCapture(move);
+
+        if (!inCheck && !isCapture)
+            continue;
+
+        if (!inCheck && isCapture) {
+            if (see(board, move) < 0)
+                continue;
             int victim = getCapturedPiece(board, decodeTarget(move));
             int gain = (victim != none) ? captureValue[victim] : 82;
             if (decodePromoted(move))
@@ -285,30 +400,35 @@ static inline int quiescenceSearch(Board *board, int alpha, int beta) {
                 continue;
         }
 
-        if (makeMove(board, move, OnlyCaptures) == 0)
+        if (makeMove(board, move) == 0) {
+            takeBack(board, backup);
             continue;
-        
+        }
+
+        legalMoves++;
         ply++;
-        repetitionTable[repetitionIndex++] = board->zobristHash; // Add current position to repetition table
+        repetitionTable[repetitionIndex++] = board->zobristHash;
         int score = -quiescenceSearch(board, -beta, -alpha);
 
         ply--;
-        repetitionIndex--; // Remove the position from the repetition table after searching
-        takeBack(board, backup); // Restore the board state
+        repetitionIndex--;
+        takeBack(board, backup);
         
         if (searchParams->stop) {
             return alpha;
         }
         
         if (score > alpha){
-            alpha = score; // Update alpha for PV node
-            // Fail-hard beta cutoff
+            alpha = score;
             if (score >= beta) 
-                return beta; // Beta cutoff fails high
+                return beta;
         }
     }
 
-    return alpha; // Return the best score found
+    if (inCheck && legalMoves == 0)
+        return -MATEVALUE + ply;
+
+    return alpha;
 }
 
 // main negamax search function
@@ -325,16 +445,17 @@ static inline int negamax(Board *board, int alpha, int beta, int depth) {
 
     PrincipalVariationLength[ply] = ply;
 
-    if (ply && detectRepetition(board)) 
+    if (ply && detectRepetition(board)) {
         return 0;
+    }
 
     int inCheck = isBoardInCheck(board);
 
     if (board->halfMoveClock >= 100) {
         if (inCheck && numLegalMovesInPosition(board) == 0)
-            return -MATEVALUE + ply; // Checkmate
+            return -MATEVALUE + ply;
 
-        return 0; // Draw by fifty-move rule
+        return 0;
     }
 
     int PVnode = (beta - alpha > 1);
@@ -343,10 +464,6 @@ static inline int negamax(Board *board, int alpha, int beta, int depth) {
 
     if (ply && (score = readHashEntry(board, &bestMove, alpha, beta, depth, ply)) != noHashEntry) {
         if (!PVnode)
-            return score;
-        if (abs(score) >= MATEVALUE - maxPly)
-            return score;
-        if (score <= alpha - 200 || score >= beta + 200)
             return score;
     }
 
@@ -388,7 +505,7 @@ static inline int negamax(Board *board, int alpha, int beta, int depth) {
     }
 
     // Null move pruning
-    if (depth >= 3 && !inCheck && ply && !OnlyPawnsOnBoard) {
+    if (depth >= 3 && !inCheck && ply && !OnlyPawnsOnBoard && staticEval >= beta) {
         copyBoard(board);
         ply++;
         repetitionTable[repetitionIndex++] = board->zobristHash;
@@ -398,7 +515,9 @@ static inline int negamax(Board *board, int alpha, int beta, int depth) {
         board->zobristHash ^= sideZobristKey;
         board->sideToMove ^= 1;
 
-        score = -negamax(board, -beta, -beta + 1, depth - 1 - NullMoveReduction);
+        int R = nullMoveReduction(depth);
+        if (R >= depth) R = depth - 1;
+        score = -negamax(board, -beta, -beta + 1, depth - 1 - R);
 
         ply--;
         repetitionIndex--;
@@ -444,9 +563,7 @@ static inline int negamax(Board *board, int alpha, int beta, int depth) {
         bool isCapture = decodeCapture(move);
         bool isPromotion = decodePromoted(move);
 
-        int capturedVictim = none;
-        if (isCapture && !decodeEnPassant(move))
-            capturedVictim = getCapturedPiece(board, decodeTarget(move));
+        int seeScore = isCapture ? see(board, move) : 0;
 
         repetitionTable[repetitionIndex++] = board->zobristHash;
         if (makeMove(board, move) == 0) {
@@ -479,8 +596,7 @@ static inline int negamax(Board *board, int alpha, int beta, int depth) {
                 continue;
             }
 
-            if (depth <= 2 && isCapture && capturedVictim != none &&
-                captureValue[capturedVictim] + 400 < captureValue[decodePiece(move)]) {
+            if (depth <= 2 && isCapture && seeScore < -50) {
                 ply--;
                 repetitionIndex--;
                 takeBack(board, backup);
@@ -493,7 +609,13 @@ static inline int negamax(Board *board, int alpha, int beta, int depth) {
         } else {
             if (movesSearched >= FullDepthMoves && depth >= ReductionLimit &&
                 !inCheck && !givesCheck && !isCapture && !isPromotion) {
-                score = -negamax(board, -alpha - 1, -alpha, depth - 1 - lmrReduction(depth, movesSearched));
+                int reduction = lmrReduction(depth, movesSearched, improving);
+                if (killerMoves[0][ply] == move || killerMoves[1][ply] == move)
+                    reduction--;
+                if (PVnode)
+                    reduction--;
+                if (reduction < 1) reduction = 1;
+                score = -negamax(board, -alpha - 1, -alpha, depth - 1 - reduction);
             } else {
                 score = alpha + 1;
             }
@@ -517,7 +639,8 @@ static inline int negamax(Board *board, int alpha, int beta, int depth) {
             bestMove = move;
 
             if (!isCapture) {
-                historyMoves[decodePiece(move)][decodeTarget(move)] += depth;
+                int bonus = depth * depth;
+                updateHistory(decodePiece(move), decodeTarget(move), bonus);
             }
 
             alpha = score;
@@ -570,6 +693,7 @@ void searchPosition(Board *board, SearchUCI *searchparams) {
     searchedNodes = 0;
     followPrincipalVariation = 0;
     scorePrincipalVariation = 0;
+    gameHistoryPly = repetitionIndex;
 
     hashHits = 0;
     hashExactHits = 0;

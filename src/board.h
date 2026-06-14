@@ -292,8 +292,13 @@ static inline int readHashEntry(Board *board, int* bestMove, int alpha, int beta
 static inline void writeHashEntry(Board *board, int bestMove, int value, int depth, int flag, int ply = 0) {
     HashEntry *entry = &TranspositionTable[getTTIndex(board->zobristHash)];
 
-    if (entry->key == board->zobristHash && entry->depth > depth)
-        return;
+    if (entry->key == board->zobristHash) {
+        if (entry->depth > depth && flag != hashExact)
+            return;
+    } else {
+        if (entry->depth > depth + 3 && entry->flag == hashExact)
+            return;
+    }
 
     if (value < -MATESCORE) value -= ply;
     if (value > MATESCORE) value += ply;
@@ -302,7 +307,8 @@ static inline void writeHashEntry(Board *board, int bestMove, int value, int dep
     entry->depth = depth;
     entry->flag = flag;
     entry->value = value;
-    entry->bestMove = bestMove;
+    if (bestMove != 0 || entry->key != board->zobristHash)
+        entry->bestMove = bestMove;
 }
 
 #endif // BOARD_H;

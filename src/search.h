@@ -258,11 +258,22 @@ static inline int scoreMove(Board *board, int move) {
     }
 
     if (decodeCapture(move)){
-        int seeScore = see(board, move);
-        if (seeScore >= 0)
-            return 10000 + seeScore;
-        else
-            return seeScore;
+        if (decodeEnPassant(move)) return 10105;
+        int startPiece = (board->sideToMove == white) ? p : P;
+        int endPiece = (board->sideToMove == white) ? k : K;
+        int capturedPiece = P;
+        for (int bbPiece = startPiece; bbPiece <= endPiece; ++bbPiece) {
+            if (getBit(board->bitboards[bbPiece], target)) {
+                capturedPiece = bbPiece;
+                break;
+            }
+        }
+        int mvvlva = seeValues[capturedPiece] - seeValues[piece] / 100;
+        if (seeValues[capturedPiece] >= seeValues[piece])
+            return 10000 + mvvlva;
+        if (see(board, move) >= 0)
+            return 10000 + mvvlva;
+        return mvvlva - 1000;
     }
     else{
         if (killerMoves[0][ply] == move) return 9000;
@@ -343,9 +354,9 @@ static inline int numLegalMovesInPosition(Board *board) {
 }
 
 // Quiescence search to handle captures and captures that lead to checks
-static inline int quiescenceSearch(Board *board, int alpha, int beta) {
+static inline int quiescenceSearch(Board *board, int alpha, int beta, int qDepth = 0) {
 
-    if ((searchedNodes & 2047) == 0) 
+    if ((searchedNodes & 1023) == 0) 
         communicate(searchParams);
 
     searchedNodes++;
@@ -370,6 +381,8 @@ static inline int quiescenceSearch(Board *board, int alpha, int beta) {
         if (eval > alpha) 
             alpha = eval;
     } else {
+        if (qDepth >= 3)
+            return evaluate(board);
         eval = -INFINITY;
     }
 
@@ -408,7 +421,7 @@ static inline int quiescenceSearch(Board *board, int alpha, int beta) {
         legalMoves++;
         ply++;
         repetitionTable[repetitionIndex++] = board->zobristHash;
-        int score = -quiescenceSearch(board, -beta, -alpha);
+        int score = -quiescenceSearch(board, -beta, -alpha, qDepth + 1);
 
         ply--;
         repetitionIndex--;
@@ -434,8 +447,8 @@ static inline int quiescenceSearch(Board *board, int alpha, int beta) {
 // main negamax search function
 static inline int negamax(Board *board, int alpha, int beta, int depth) {
 
-    if ((searchedNodes & 2047) == 0) 
-        communicate(searchParams); // Communicate with the engine every 2048 nodes
+    if ((searchedNodes & 1023) == 0) 
+        communicate(searchParams);
 
     //static int currentLine[maxPly]; // Track the line of moves searched
     int score;
@@ -563,7 +576,10 @@ static inline int negamax(Board *board, int alpha, int beta, int depth) {
         bool isCapture = decodeCapture(move);
         bool isPromotion = decodePromoted(move);
 
-        int seeScore = isCapture ? see(board, move) : 0;
+        if (!PVnode && !inCheck && movesSearched > 0 && move != bestMove &&
+            depth <= 2 && isCapture && !isPromotion && see(board, move) < -50) {
+            continue;
+        }
 
         repetitionTable[repetitionIndex++] = board->zobristHash;
         if (makeMove(board, move) == 0) {
@@ -590,13 +606,6 @@ static inline int negamax(Board *board, int alpha, int beta, int depth) {
 
             if (depth <= 3 && !isCapture && !isPromotion &&
                 staticEval + futilityMargins[depth] + (improving ? 80 : 0) <= alpha) {
-                ply--;
-                repetitionIndex--;
-                takeBack(board, backup);
-                continue;
-            }
-
-            if (depth <= 2 && isCapture && seeScore < -50) {
                 ply--;
                 repetitionIndex--;
                 takeBack(board, backup);
@@ -727,6 +736,11 @@ void searchPosition(Board *board, SearchUCI *searchparams) {
             break;
         }
 
+        if (searchParams->timedGame && TIME_IN_MILLISECONDS >= searchParams->stopTime) {
+            searchParams->stop = 1;
+            break;
+        }
+
         followPrincipalVariation = 1;
 
         int score = negamax(board, alpha, beta, curDepth);
@@ -766,13 +780,16 @@ void searchPosition(Board *board, SearchUCI *searchparams) {
 
         bestEvaluationPreviousIteration = score;
 
+        U64 elapsedMs = TIME_IN_MILLISECONDS - searchParams->startTime;
+        U64 nps = elapsedMs > 0 ? (searchedNodes * 1000) / elapsedMs : 0;
+
         if (score > 10000 || score < -10000) {
             std::cout << "info score mate " << (score > 0 ? (MATEVALUE - score)/2 + 1 : -(MATEVALUE + score)/2 - 1) 
-                << " depth " << curDepth << " nodes " << searchedNodes << " time " << TIME_IN_MILLISECONDS - searchParams->startTime << " pv ";
+                << " depth " << curDepth << " nodes " << searchedNodes << " time " << elapsedMs << " nps " << nps << " pv ";
         }
         else
             std::cout << "info score cp " << score << " depth " << curDepth
-                << " nodes " << searchedNodes << " time " << TIME_IN_MILLISECONDS - searchParams->startTime << " pv ";
+                << " nodes " << searchedNodes << " time " << elapsedMs << " nps " << nps << " pv ";
 
         for (int i = 0; i < PrincipalVariationLength[0]; i++) {
             if (PrincipalVariationTable[0][i] == 0) break;

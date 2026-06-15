@@ -1,7 +1,6 @@
 # Compiler and flags
 CXX := g++
-CXXFLAGS := -Wall -std=c++17 -fno-sized-deallocation
-OPTFLAGS := -O3 -march=native -flto
+CXXFLAGS := -Wall -std=c++17 -fno-sized-deallocation -O3 -march=native -flto
 DEBUGFLAGS := -g
 DEPFLAGS := -MMD -MP
 
@@ -29,12 +28,11 @@ MATCH_OBJ := $(BUILD_DIR)/match.o
 TUNER_SRC := $(SRC_DIR)/tuner.cpp
 TUNER_OBJ := $(BUILD_DIR)/tuner.o
 
-# Default target
-all: CXXFLAGS += $(OPTFLAGS)
+# Default target (builds all with static linking)
 all: LDFLAGS += $(STATICFLAGS)
 all: engine perftValidate match
 
-debug: CXXFLAGS += $(DEBUGFLAGS)
+debug: CXXFLAGS := -Wall -std=c++17 -fno-sized-deallocation $(DEBUGFLAGS)
 debug: LDFLAGS += $(STATICFLAGS)
 debug: engine perftValidate match
 
@@ -52,7 +50,7 @@ perftValidate: $(PERFT_OBJ)
 match: $(MATCH_OBJ)
 	$(CXX) $(CXXFLAGS) $(LDFLAGS) -pthread -o $@ $^
 
-tuner: CXXFLAGS += $(OPTFLAGS) -DTUNING_MODE
+tuner: CXXFLAGS += -DTUNING_MODE
 tuner: LDFLAGS += $(STATICFLAGS)
 tuner: $(TUNER_OBJ)
 	$(CXX) $(CXXFLAGS) $(LDFLAGS) -o $@ $^

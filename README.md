@@ -20,10 +20,13 @@ The project is organized into two main folders:
 - `match.cpp` - Engine vs engine match runner.
 
 ### Building
+
+All builds use `-O3 -march=native -flto` by default for maximum performance.
+
 ```bash
 make engine              # Build with default name 'engine'
 make engine EXE=polarity # Build with custom output name
-make all                 # Build engine + utilities
+make all                 # Build engine + utilities (with static linking)
 make clean               # Remove build artifacts
 ```
 
@@ -117,7 +120,7 @@ I am using a negamax search with alpha-beta pruning. The search is done using it
 Multiple techniques are implemented to improve the search efficiency:
 
 - `Quiescence Search` — Extends the search at leaf nodes to include captures, check evasions, and checkmate detection. Uses TT probing, SEE-based capture filtering, and delta pruning to avoid the horizon effect while keeping node count manageable.
-- `Move Ordering` — Done using SEE (Static Exchange Evaluation) for captures, which accurately evaluates whether a capture sequence wins or loses material. For quiet moves, we use the transposition table move first, then killer moves, then countermove history, then general history heuristic with gravity-based decay.
+- `Move Ordering` — Captures are ordered using MVV-LVA with SEE validation: clearly winning captures (victim >= attacker) are scored immediately, while ambiguous captures use SEE to determine if they're winning or losing exchanges. Bad captures are demoted below quiet moves. For quiet moves, we use the transposition table move first, then killer moves, then countermove history, then general history heuristic with gravity-based decay.
 - `Principal Variation Search` — We use a PV search approach where we search the first move with a full window and subsequent moves with a null window, re-searching with a full window only if the null window search fails high. This is faster than searching every move with a full window.
 - `Transposition Tables` — Store previously searched positions with their evaluations, best moves, and depth. We use a replacement scheme that prefers deeper entries and protects exact-score entries, and the hash move from the TT is never pruned. TT cutoffs are disabled in PV nodes to preserve search accuracy.
 - `Null Move Pruning` — We evaluate positions after giving the opponent a free move with adaptive reduction (R=3+depth/6). If the position is still good for us even after skipping our turn, we can assume the current branch is strong and prune it. Only applied when static eval >= beta.
@@ -194,6 +197,9 @@ Multiple techniques are implemented to improve the search efficiency:
 | V2.11 | Structural eval improvements | +42 |
 | V2.12 | Refactor codebase into src/ and utilities/ folders | — |
 | V2.13 | Search overhaul: SEE, repetition fix, adaptive NMP | +85 |
+| V2.13.1 | Update README with V2.12-V2.13 changes | — |
+| V2.13.2 | Add build/ to .gitignore | — |
+| V2.13.3 | Timing fixes, NPS reporting, makefile -O3 optimization | +104 vs V2.5 |
 
 ---
 ## Note on AI Assistance

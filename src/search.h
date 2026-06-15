@@ -295,31 +295,36 @@ void printMoveScores(Board *board, MoveList *list) {
     }
 }
 
-static inline void sortMoves(Board *board, MoveList *list, int bestMove = 0) {
-    int n = list->count;
-    if (n <= 1) return;
+int moveScores[maxPly + 1][300];
 
-    ScoredMove scoredMoves[300];
-    for (int i = 0; i < n; ++i) {
-        if (list->moves[i] == bestMove) {
-            scoredMoves[i] = { list->moves[i], 30000 }; // Highest score for principal variation move
-            continue;
-        }
-        scoredMoves[i] = { list->moves[i], scoreMove(board, list->moves[i]) };
+static inline void scoreMoves(Board *board, MoveList *list, int bestMove, int searchPly) {
+    for (int i = 0; i < list->count; ++i) {
+        if (list->moves[i] == bestMove)
+            moveScores[searchPly][i] = 30000;
+        else
+            moveScores[searchPly][i] = scoreMove(board, list->moves[i]);
     }
+}
 
-    std::sort(scoredMoves, scoredMoves + n, [](const ScoredMove &a, const ScoredMove &b) {
-        return a.score > b.score; // Descending
-    });
-
-    for (int i = 0; i < n; ++i) {
-        list->moves[i] = scoredMoves[i].move;
+static inline void pickMove(MoveList *list, int startIdx, int searchPly) {
+    int bestIdx = startIdx;
+    int bestScore = moveScores[searchPly][startIdx];
+    for (int i = startIdx + 1; i < list->count; ++i) {
+        if (moveScores[searchPly][i] > bestScore) {
+            bestScore = moveScores[searchPly][i];
+            bestIdx = i;
+        }
+    }
+    if (bestIdx != startIdx) {
+        std::swap(list->moves[startIdx], list->moves[bestIdx]);
+        std::swap(moveScores[searchPly][startIdx], moveScores[searchPly][bestIdx]);
     }
 }
 
 static inline int detectRepetition(Board *board) {
     int count = 0;
-    for (int i = std::max(0, repetitionIndex - 100); i < repetitionIndex; ++i) {
+    int limit = std::max(0, repetitionIndex - board->halfMoveClock);
+    for (int i = repetitionIndex - 1; i >= limit; i -= 1) {
         if (repetitionTable[i] == board->zobristHash) {
             if (i < gameHistoryPly)
                 return 1;
@@ -344,9 +349,9 @@ static inline int numLegalMovesInPosition(Board *board) {
     int legalMoves = 0;
     MoveList moveList;
     generateMoves(board, &moveList);
-    copyBoard(board); // Backup the current board state
+    copyBoard(board);
     for (int i = 0; i < moveList.count; ++i) {
-        if (makeMove(board, moveList.moves[i]) == 0) continue; // Skip illegal moves
+        if (makeMove(board, moveList.moves[i]) == 0) { takeBack(board, backup); continue; }
         legalMoves++;
         takeBack(board, backup); // Restore the board state
     }
@@ -387,14 +392,19 @@ static inline int quiescenceSearch(Board *board, int alpha, int beta, int qDepth
     }
 
     MoveList moveList;
-    generateMoves(board, &moveList);
-    sortMoves(board, &moveList, ttMove);
+    if (inCheck)
+        generateMoves(board, &moveList);
+    else
+        generateCaptures(board, &moveList);
+    int qsPly = ply;
+    scoreMoves(board, &moveList, ttMove, qsPly);
 
     copyBoard(board);
 
     int legalMoves = 0;
 
     for (int count = 0; count < moveList.count; ++count) {
+        pickMove(&moveList, count, qsPly);
         int move = moveList.moves[count];
 
         bool isCapture = decodeCapture(move);
@@ -403,7 +413,7 @@ static inline int quiescenceSearch(Board *board, int alpha, int beta, int qDepth
             continue;
 
         if (!inCheck && isCapture) {
-            if (see(board, move) < 0)
+            if (moveScores[qsPly][count] < 0)
                 continue;
             int victim = getCapturedPiece(board, decodeTarget(move));
             int gain = (victim != none) ? captureValue[victim] : 82;
@@ -568,22 +578,25 @@ static inline int negamax(Board *board, int alpha, int beta, int depth) {
     if (followPrincipalVariation)
         enablePrincipalVariationScoring(board, &moveList);
 
-    sortMoves(board, &moveList, bestMove);
+    int nmPly = ply;
+    scoreMoves(board, &moveList, bestMove, nmPly);
     copyBoard(board);
 
     for (int count = 0; count < moveList.count; ++count) {
+        pickMove(&moveList, count, nmPly);
         int move = moveList.moves[count];
         bool isCapture = decodeCapture(move);
         bool isPromotion = decodePromoted(move);
 
         if (!PVnode && !inCheck && movesSearched > 0 && move != bestMove &&
-            depth <= 2 && isCapture && !isPromotion && see(board, move) < -50) {
+            depth <= 2 && isCapture && !isPromotion && moveScores[nmPly][count] < 0) {
             continue;
         }
 
         repetitionTable[repetitionIndex++] = board->zobristHash;
         if (makeMove(board, move) == 0) {
             repetitionIndex--;
+            takeBack(board, backup);
             continue;
         }
 
@@ -593,29 +606,36 @@ static inline int negamax(Board *board, int alpha, int beta, int depth) {
         prevMovePiece[ply] = decodePiece(move);
         prevMoveTarget[ply] = decodeTarget(move);
 
-        bool givesCheck = isBoardInCheck(board);
+        int givesCheck = -1; // -1 = not computed yet
 
-        if (!PVnode && !inCheck && !givesCheck && movesSearched > 0 && move != bestMove) {
-            if (depth <= 4 && !isCapture && !isPromotion &&
-                movesSearched >= lmpThreshold[depth] + (improving ? depth : 0)) {
-                ply--;
-                repetitionIndex--;
-                takeBack(board, backup);
-                continue;
+        if (!PVnode && !inCheck && movesSearched > 0 && move != bestMove) {
+            if (depth <= 4 && !isCapture && !isPromotion) {
+                if (givesCheck == -1) givesCheck = isBoardInCheck(board);
+                if (!givesCheck &&
+                    movesSearched >= lmpThreshold[depth] + (improving ? depth : 0)) {
+                    ply--;
+                    repetitionIndex--;
+                    takeBack(board, backup);
+                    continue;
+                }
             }
 
-            if (depth <= 3 && !isCapture && !isPromotion &&
-                staticEval + futilityMargins[depth] + (improving ? 80 : 0) <= alpha) {
-                ply--;
-                repetitionIndex--;
-                takeBack(board, backup);
-                continue;
+            if (depth <= 3 && !isCapture && !isPromotion) {
+                if (givesCheck == -1) givesCheck = isBoardInCheck(board);
+                if (!givesCheck &&
+                    staticEval + futilityMargins[depth] + (improving ? 80 : 0) <= alpha) {
+                    ply--;
+                    repetitionIndex--;
+                    takeBack(board, backup);
+                    continue;
+                }
             }
         }
 
         if (movesSearched == 0) {
             score = -negamax(board, -beta, -alpha, depth - 1);
         } else {
+            if (givesCheck == -1) givesCheck = isBoardInCheck(board);
             if (movesSearched >= FullDepthMoves && depth >= ReductionLimit &&
                 !inCheck && !givesCheck && !isCapture && !isPromotion) {
                 int reduction = lmrReduction(depth, movesSearched, improving);
@@ -833,9 +853,10 @@ void searchPosition(Board *board, SearchUCI *searchparams) {
         if (fallbackMove == 0) {
             MoveList fallbackList;
             generateMoves(board, &fallbackList);
-            sortMoves(board, &fallbackList);
+            scoreMoves(board, &fallbackList, 0, 0);
             copyBoard(board);
             for (int i = 0; i < fallbackList.count; i++) {
+                pickMove(&fallbackList, i, 0);
                 if (makeMove(board, fallbackList.moves[i]) == 0) {
                     takeBack(board, backup);
                     continue;

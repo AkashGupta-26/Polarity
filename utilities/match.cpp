@@ -92,7 +92,7 @@ static int countLegalMoves(Board *board) {
     copyBoard(board);
     int legalMoves = 0;
     for (int i = 0; i < moveList.count; ++i) {
-        if (makeMove(board, moveList.moves[i]) == 0) continue;
+        if (makeMove(board, moveList.moves[i]) == 0) { takeBack(board, backup); continue; }
         legalMoves++;
         takeBack(board, backup);
     }

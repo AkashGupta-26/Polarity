@@ -80,6 +80,8 @@ Knight and King moves are precalculated using a lookup table, while Bishop, Rook
 
 I am using **pseudo-legal** move generation, which means that the moves generated are not checked for legality (e.g., whether the king is in check). This is done to speed up the move generation process. The legality of a move is checked in the `makeMove` function, which is called when making a move on the board.
 
+A dedicated `generateCaptures` function generates only captures, en passant, and promotions (both capture and quiet promotions) for use in quiescence search, avoiding the overhead of generating and discarding quiet moves.
+
 
 ### Take Back Implementation
 
@@ -119,8 +121,8 @@ I am using a negamax search with alpha-beta pruning. The search is done using it
 
 Multiple techniques are implemented to improve the search efficiency:
 
-- `Quiescence Search` — Extends the search at leaf nodes to include captures, check evasions, and checkmate detection. Uses TT probing, SEE-based capture filtering, and delta pruning to avoid the horizon effect while keeping node count manageable.
-- `Move Ordering` — Captures are ordered using MVV-LVA with SEE validation: clearly winning captures (victim >= attacker) are scored immediately, while ambiguous captures use SEE to determine if they're winning or losing exchanges. Bad captures are demoted below quiet moves. For quiet moves, we use the transposition table move first, then killer moves, then countermove history, then general history heuristic with gravity-based decay.
+- `Quiescence Search` — Extends the search at leaf nodes to include captures, check evasions, and checkmate detection. Uses TT probing, SEE-based capture filtering, delta pruning, and a dedicated capture-only move generator (`generateCaptures`) that skips quiet moves entirely — reducing generated moves by ~60-80% in qsearch nodes.
+- `Move Ordering` — Uses lazy incremental ordering: all moves are scored upfront, but only the best remaining move is selected (via linear scan + swap) at each iteration. This avoids a full O(n log n) sort since beta cutoffs typically occur after 4-8 moves. Captures are ordered using MVV-LVA with SEE validation: clearly winning captures (victim >= attacker) are scored immediately, while ambiguous captures use SEE to determine if they're winning or losing exchanges. SEE results are cached during scoring and reused in pruning decisions, eliminating redundant exchange evaluations. For quiet moves, we use the transposition table move first, then killer moves, then countermove history, then general history heuristic with gravity-based decay.
 - `Principal Variation Search` — We use a PV search approach where we search the first move with a full window and subsequent moves with a null window, re-searching with a full window only if the null window search fails high. This is faster than searching every move with a full window.
 - `Transposition Tables` — Store previously searched positions with their evaluations, best moves, and depth. We use a replacement scheme that prefers deeper entries and protects exact-score entries, and the hash move from the TT is never pruned. TT cutoffs are disabled in PV nodes to preserve search accuracy.
 - `Null Move Pruning` — We evaluate positions after giving the opponent a free move with adaptive reduction (R=3+depth/6). If the position is still good for us even after skipping our turn, we can assume the current branch is strong and prune it. Only applied when static eval >= beta.
@@ -200,6 +202,7 @@ Multiple techniques are implemented to improve the search efficiency:
 | V2.13.1 | Update README with V2.12-V2.13 changes | — |
 | V2.13.2 | Add build/ to .gitignore | — |
 | V2.13.3 | Timing fixes, NPS reporting, makefile -O3 optimization | +104 vs V2.5 |
+| V2.14 | NPS optimization: lazy move ordering, capture-only movegen, incremental occupancy, SEE caching, eval attack dedup, double-copy elimination | +45 |
 
 ---
 ## Note on AI Assistance

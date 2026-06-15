@@ -438,6 +438,9 @@ static inline int evaluate(Board *board) {
 
     U64 whiteAttacks = 0ULL, blackAttacks = 0ULL;
     U64 whitePawnAttacks = 0ULL, blackPawnAttacks = 0ULL;
+    U64 whiteKnightAttacks = 0ULL, blackKnightAttacks = 0ULL;
+    U64 whiteBishopAttacks = 0ULL, blackBishopAttacks = 0ULL;
+    U64 whiteRookAttacks = 0ULL, blackRookAttacks = 0ULL;
 
     U64 wp = board->bitboards[P];
     while (wp) { int sq = getLSBindex(wp); whitePawnAttacks |= pawnAttacks[white][sq]; popBit(wp, sq); }
@@ -540,6 +543,7 @@ static inline int evaluate(Board *board) {
                 case N:
                     {
                         U64 attacks = knightAttacks[square];
+                        whiteKnightAttacks |= attacks;
                         whiteAttacks |= attacks;
                         mobility = countBits(attacks & ~board->occupancies[white] & ~blackPawnAttacks);
                         mgScore += knightSquareTable[0][square] + mobility * mobilityMG;
@@ -564,6 +568,7 @@ static inline int evaluate(Board *board) {
                 case B:
                     {
                         U64 attacks = getBishopAttacks(square, board->occupancies[both]);
+                        whiteBishopAttacks |= attacks;
                         whiteAttacks |= attacks;
                         mobility = countBits(attacks & ~board->occupancies[white] & ~blackPawnAttacks);
                         mgScore += bishopSquareTable[0][square] + mobility * mobilityMG;
@@ -582,6 +587,7 @@ static inline int evaluate(Board *board) {
                 case R:
                     {
                         U64 attacks = getRookAttacks(square, board->occupancies[both]);
+                        whiteRookAttacks |= attacks;
                         whiteAttacks |= attacks;
                         mobility = countBits(attacks & ~board->occupancies[white] & ~blackPawnAttacks);
                         mgScore += rookSquareTable[0][square] + mobility * mobilityMG;
@@ -728,6 +734,7 @@ static inline int evaluate(Board *board) {
                 case n:
                     {
                         U64 attacks = knightAttacks[square];
+                        blackKnightAttacks |= attacks;
                         blackAttacks |= attacks;
                         mobility = countBits(attacks & ~board->occupancies[black] & ~whitePawnAttacks);
                         mgScore -= (knightSquareTable[0][mirrorSquare[square]] + mobility * mobilityMG);
@@ -752,6 +759,7 @@ static inline int evaluate(Board *board) {
                 case b:
                     {
                         U64 attacks = getBishopAttacks(square, board->occupancies[both]);
+                        blackBishopAttacks |= attacks;
                         blackAttacks |= attacks;
                         mobility = countBits(attacks & ~board->occupancies[black] & ~whitePawnAttacks);
                         mgScore -= (bishopSquareTable[0][mirrorSquare[square]] + mobility * mobilityMG);
@@ -770,6 +778,7 @@ static inline int evaluate(Board *board) {
                 case r:
                     {
                         U64 attacks = getRookAttacks(square, board->occupancies[both]);
+                        blackRookAttacks |= attacks;
                         blackAttacks |= attacks;
                         mobility = countBits(attacks & ~board->occupancies[black] & ~whitePawnAttacks);
                         mgScore -= (rookSquareTable[0][mirrorSquare[square]] + mobility * mobilityMG);
@@ -867,51 +876,32 @@ static inline int evaluate(Board *board) {
 
     // --- Threats: hanging pieces and minor/rook threats ---
     {
-        U64 whiteMinorAttacks = 0ULL, blackMinorAttacks = 0ULL;
-        U64 tmp;
-        tmp = board->bitboards[N];
-        while (tmp) { int sq = getLSBindex(tmp); whiteMinorAttacks |= knightAttacks[sq]; popBit(tmp, sq); }
-        tmp = board->bitboards[B];
-        while (tmp) { int sq = getLSBindex(tmp); whiteMinorAttacks |= getBishopAttacks(sq, board->occupancies[both]); popBit(tmp, sq); }
-        tmp = board->bitboards[n];
-        while (tmp) { int sq = getLSBindex(tmp); blackMinorAttacks |= knightAttacks[sq]; popBit(tmp, sq); }
-        tmp = board->bitboards[b];
-        while (tmp) { int sq = getLSBindex(tmp); blackMinorAttacks |= getBishopAttacks(sq, board->occupancies[both]); popBit(tmp, sq); }
-
-        U64 whiteRookAttacks = 0ULL, blackRookAttacks = 0ULL;
-        tmp = board->bitboards[R];
-        while (tmp) { int sq = getLSBindex(tmp); whiteRookAttacks |= getRookAttacks(sq, board->occupancies[both]); popBit(tmp, sq); }
-        tmp = board->bitboards[r];
-        while (tmp) { int sq = getLSBindex(tmp); blackRookAttacks |= getRookAttacks(sq, board->occupancies[both]); popBit(tmp, sq); }
+        U64 whiteMinorAttacks = whiteKnightAttacks | whiteBishopAttacks;
+        U64 blackMinorAttacks = blackKnightAttacks | blackBishopAttacks;
 
         U64 blackPieces = board->occupancies[black] & ~board->bitboards[k];
         U64 whitePieces = board->occupancies[white] & ~board->bitboards[K];
 
-        // White minor attacks on black R/Q
         U64 minorThreatsW = whiteMinorAttacks & (board->bitboards[r] | board->bitboards[q]);
         int threatCountW = countBits(minorThreatsW);
         mgScore += threatCountW * threatByMinor[0];
         egScore += threatCountW * threatByMinor[1];
 
-        // White rook attacks on black Q
         U64 rookThreatsW = whiteRookAttacks & board->bitboards[q];
         int rookThreatCountW = countBits(rookThreatsW);
         mgScore += rookThreatCountW * threatByRook[0];
         egScore += rookThreatCountW * threatByRook[1];
 
-        // Black minor attacks on white R/Q
         U64 minorThreatsB = blackMinorAttacks & (board->bitboards[R] | board->bitboards[Q]);
         int threatCountB = countBits(minorThreatsB);
         mgScore -= threatCountB * threatByMinor[0];
         egScore -= threatCountB * threatByMinor[1];
 
-        // Black rook attacks on white Q
         U64 rookThreatsB = blackRookAttacks & board->bitboards[Q];
         int rookThreatCountB = countBits(rookThreatsB);
         mgScore -= rookThreatCountB * threatByRook[0];
         egScore -= rookThreatCountB * threatByRook[1];
 
-        // Hanging pieces: attacked by enemy but not defended
         U64 whiteHanging = whitePieces & blackAttacks & ~whiteAttacks;
         U64 blackHanging = blackPieces & whiteAttacks & ~blackAttacks;
         mgScore += countBits(whiteHanging) * hangingPenalty[0];
@@ -982,26 +972,20 @@ static inline int evaluate(Board *board) {
         egScore += (whiteCenterCtrl - blackCenterCtrl) * centerControlBonus[1];
     }
 
-    // --- Connected rooks ---
+    // --- Connected rooks (using cached rook attacks) ---
     {
         U64 whiteRooks = board->bitboards[R];
         if (countBits(whiteRooks) >= 2) {
-            int r1 = getLSBindex(whiteRooks);
-            popBit(whiteRooks, r1);
             int r2 = getLSBindex(whiteRooks);
-            U64 r1attacks = getRookAttacks(r1, board->occupancies[both]);
-            if (r1attacks & (1ULL << r2)) {
+            if (whiteRookAttacks & (1ULL << r2)) {
                 mgScore += connectedRookBonus[0];
                 egScore += connectedRookBonus[1];
             }
         }
         U64 blackRooks = board->bitboards[r];
         if (countBits(blackRooks) >= 2) {
-            int r1 = getLSBindex(blackRooks);
-            popBit(blackRooks, r1);
             int r2 = getLSBindex(blackRooks);
-            U64 r1attacks = getRookAttacks(r1, board->occupancies[both]);
-            if (r1attacks & (1ULL << r2)) {
+            if (blackRookAttacks & (1ULL << r2)) {
                 mgScore -= connectedRookBonus[0];
                 egScore -= connectedRookBonus[1];
             }

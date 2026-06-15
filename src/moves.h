@@ -353,6 +353,153 @@ static inline void generateMoves(Board *board, MoveList *moves) {
     }
 }
 
+static inline void generateCaptures(Board *board, MoveList *moves) {
+    moves->count = 0;
+    int source, target;
+    U64 bitboard, attacks;
+    U64 enemy = board->occupancies[board->sideToMove ^ 1];
+
+    // Knight captures
+    bitboard = board->bitboards[(board->sideToMove == white) ? N : n];
+    while (bitboard) {
+        source = getLSBindex(bitboard);
+        attacks = knightAttacks[source] & enemy;
+        while (attacks) {
+            target = getLSBindex(attacks);
+            addMove(moves, encodeMove(source, target, (board->sideToMove == white) ? N : n, 0, 1, 0, 0, 0));
+            popBit(attacks, target);
+        }
+        popBit(bitboard, source);
+    }
+
+    // Bishop captures
+    bitboard = board->bitboards[(board->sideToMove == white) ? B : b];
+    while (bitboard) {
+        source = getLSBindex(bitboard);
+        attacks = getBishopAttacks(source, board->occupancies[both]) & enemy;
+        while (attacks) {
+            target = getLSBindex(attacks);
+            addMove(moves, encodeMove(source, target, (board->sideToMove == white) ? B : b, 0, 1, 0, 0, 0));
+            popBit(attacks, target);
+        }
+        popBit(bitboard, source);
+    }
+
+    // Rook captures
+    bitboard = board->bitboards[(board->sideToMove == white) ? R : r];
+    while (bitboard) {
+        source = getLSBindex(bitboard);
+        attacks = getRookAttacks(source, board->occupancies[both]) & enemy;
+        while (attacks) {
+            target = getLSBindex(attacks);
+            addMove(moves, encodeMove(source, target, (board->sideToMove == white) ? R : r, 0, 1, 0, 0, 0));
+            popBit(attacks, target);
+        }
+        popBit(bitboard, source);
+    }
+
+    // Queen captures
+    bitboard = board->bitboards[(board->sideToMove == white) ? Q : q];
+    while (bitboard) {
+        source = getLSBindex(bitboard);
+        attacks = getQueenAttacks(source, board->occupancies[both]) & enemy;
+        while (attacks) {
+            target = getLSBindex(attacks);
+            addMove(moves, encodeMove(source, target, (board->sideToMove == white) ? Q : q, 0, 1, 0, 0, 0));
+            popBit(attacks, target);
+        }
+        popBit(bitboard, source);
+    }
+
+    // Pawn captures + capture-promotions + en passant + quiet promotions
+    if (board->sideToMove == white) {
+        bitboard = board->bitboards[P];
+        // Quiet promotions (non-capture pushes to rank 8)
+        U64 singlePush = (bitboard << 8) & board->occupancies[3];
+        U64 promos = singlePush & RANK_8;
+        while (promos) {
+            target = getLSBindex(promos);
+            source = target - 8;
+            addMove(moves, encodeMove(source, target, P, Q, 0, 0, 0, 0));
+            addMove(moves, encodeMove(source, target, P, R, 0, 0, 0, 0));
+            addMove(moves, encodeMove(source, target, P, B, 0, 0, 0, 0));
+            addMove(moves, encodeMove(source, target, P, N, 0, 0, 0, 0));
+            popBit(promos, target);
+        }
+        // Captures
+        while (bitboard) {
+            source = getLSBindex(bitboard);
+            U64 occ = board->occupancies[black];
+            if (board->enPassantSquare != noSquare)
+                occ |= (1ULL << board->enPassantSquare);
+            attacks = pawnAttacks[white][source] & occ;
+            while (attacks) {
+                target = getLSBindex(attacks);
+                if (target >= a8 && target <= h8) {
+                    addMove(moves, encodeMove(source, target, P, Q, 1, 0, 0, 0));
+                    addMove(moves, encodeMove(source, target, P, R, 1, 0, 0, 0));
+                    addMove(moves, encodeMove(source, target, P, B, 1, 0, 0, 0));
+                    addMove(moves, encodeMove(source, target, P, N, 1, 0, 0, 0));
+                } else if (target == board->enPassantSquare) {
+                    addMove(moves, encodeMove(source, target, P, 0, 1, 0, 1, 0));
+                } else {
+                    addMove(moves, encodeMove(source, target, P, 0, 1, 0, 0, 0));
+                }
+                popBit(attacks, target);
+            }
+            popBit(bitboard, source);
+        }
+    } else {
+        bitboard = board->bitboards[p];
+        U64 singlePush = (bitboard >> 8) & board->occupancies[3];
+        U64 promos = singlePush & RANK_1;
+        while (promos) {
+            target = getLSBindex(promos);
+            source = target + 8;
+            addMove(moves, encodeMove(source, target, p, q, 0, 0, 0, 0));
+            addMove(moves, encodeMove(source, target, p, r, 0, 0, 0, 0));
+            addMove(moves, encodeMove(source, target, p, b, 0, 0, 0, 0));
+            addMove(moves, encodeMove(source, target, p, n, 0, 0, 0, 0));
+            popBit(promos, target);
+        }
+        while (bitboard) {
+            source = getLSBindex(bitboard);
+            U64 occ = board->occupancies[white];
+            if (board->enPassantSquare != noSquare)
+                occ |= (1ULL << board->enPassantSquare);
+            attacks = pawnAttacks[black][source] & occ;
+            while (attacks) {
+                target = getLSBindex(attacks);
+                if (target >= a1 && target <= h1) {
+                    addMove(moves, encodeMove(source, target, p, q, 1, 0, 0, 0));
+                    addMove(moves, encodeMove(source, target, p, r, 1, 0, 0, 0));
+                    addMove(moves, encodeMove(source, target, p, b, 1, 0, 0, 0));
+                    addMove(moves, encodeMove(source, target, p, n, 1, 0, 0, 0));
+                } else if (target == board->enPassantSquare) {
+                    addMove(moves, encodeMove(source, target, p, 0, 1, 0, 1, 0));
+                } else {
+                    addMove(moves, encodeMove(source, target, p, 0, 1, 0, 0, 0));
+                }
+                popBit(attacks, target);
+            }
+            popBit(bitboard, source);
+        }
+    }
+
+    // King captures
+    bitboard = board->bitboards[board->sideToMove == white ? K : k];
+    while (bitboard) {
+        source = getLSBindex(bitboard);
+        attacks = kingAttacks[source] & enemy;
+        while (attacks) {
+            target = getLSBindex(attacks);
+            addMove(moves, encodeMove(source, target, (board->sideToMove == white) ? K : k, 0, 1, 0, 0, 0));
+            popBit(attacks, target);
+        }
+        popBit(bitboard, source);
+    }
+}
+
 std::string moveToUCI(int move) {
     int source = decodeSource(move);
     int target = decodeTarget(move);
@@ -417,13 +564,7 @@ void printMoveList(const MoveList *list) {
 }
 
 
-static inline int makeMove(Board *board, int move, int onlyCaptures = 0) {
-    if (onlyCaptures && !decodeCapture(move) && !isBoardInCheck(board)) {
-        return 0;
-    }
-
-    copyBoard(board); // Backup the current board state
-
+static inline int makeMove(Board *board, int move) {
     int source = decodeSource(move);
     int target = decodeTarget(move);
     int piece = decodePiece(move);
@@ -512,11 +653,32 @@ static inline int makeMove(Board *board, int move, int onlyCaptures = 0) {
 
     board->zobristHash ^= castlingZobristKeys[board->castlingRights];
 
-    memset(board->occupancies, 0ULL, sizeof(board->occupancies));
-    board->occupancies[white] = board->bitboards[P] | board->bitboards[N] | board->bitboards[B] | board->bitboards[R] | board->bitboards[Q] | board->bitboards[K];
-    board->occupancies[black] = board->bitboards[p] | board->bitboards[n] | board->bitboards[b] | board->bitboards[r] | board->bitboards[q] | board->bitboards[k];
+    int side = board->sideToMove;
+    int opponent = side ^ 1;
+    U64 fromTo = (1ULL << source) | (1ULL << target);
+    board->occupancies[side] ^= fromTo;
+
+    if (capture) {
+        if (!enPass)
+            board->occupancies[opponent] &= ~(1ULL << target);
+    }
+
+    if (enPass) {
+        int epCapSq = target + (side == white ? -8 : 8);
+        board->occupancies[opponent] &= ~(1ULL << epCapSq);
+    }
+
+    if (castling) {
+        switch (target) {
+            case g1: board->occupancies[white] ^= (1ULL << h1) | (1ULL << f1); break;
+            case c1: board->occupancies[white] ^= (1ULL << a1) | (1ULL << d1); break;
+            case g8: board->occupancies[black] ^= (1ULL << h8) | (1ULL << f8); break;
+            case c8: board->occupancies[black] ^= (1ULL << a8) | (1ULL << d8); break;
+        }
+    }
+
     board->occupancies[both] = board->occupancies[white] | board->occupancies[black];
-    board->occupancies[3] = ~board->occupancies[both]; // Empty squares
+    board->occupancies[3] = ~board->occupancies[both];
 
     board->sideToMove ^= 1;
     board->zobristHash ^= sideZobristKey;
@@ -526,8 +688,7 @@ static inline int makeMove(Board *board, int move, int onlyCaptures = 0) {
         : getLSBindex(board->bitboards[K]);
 
     if (isSquareAttacked(board, kingSquare, board->sideToMove)) {
-        takeBack(board, backup); // Restore the board
-        return 0; // Illegal move
+        return 0; // Illegal move — caller handles takeBack
     }
     return 1;
 }

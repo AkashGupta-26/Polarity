@@ -223,11 +223,7 @@ void parseFEN(Board* board, const std::string& fen) {
 // TT move encoding: store only source(6) + target(6) + promoted(4) = 16 bits
 static inline uint16_t moveToTTMove(int move) {
     if (move == 0) return 0;
-    return (uint16_t)((move & 0x3F) | ((move >> 6) & 0x3F) << 6 | ((move >> 16) & 0xF) << 12);
-}
-
-static inline int ttMoveToMove(uint16_t ttMove) {
-    return (int)ttMove;
+    return (uint16_t)((move & 0x3F) | (((move >> 6) & 0x3F) << 6) | (((move >> 16) & 0xF) << 12));
 }
 
 static inline bool ttMoveMatch(int move, uint16_t ttMove) {
@@ -380,7 +376,7 @@ static inline int readHashEntryEval(Board *board, int *bestMove, int *ttEval) {
         if (entry->key16 == key16 && entry->genBound != 0) {
             if (entry->move != 0)
                 *bestMove = (int)entry->move;
-            if (entry->staticEval != -32768)
+            if (entry->staticEval != (int16_t)-32768)
                 *ttEval = (int)entry->staticEval;
             return 1;
         }

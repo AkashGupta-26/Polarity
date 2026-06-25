@@ -514,6 +514,7 @@ static inline int negamax(Board *board, int alpha, int beta, int depth) {
     if (depth >= 5 && bestMove == 0 && !inCheck) {
         negamax(board, alpha, beta, depth - 2);
         readHashEntry(board, &bestMove, -INFINITY, INFINITY, 1, ply);
+        hashMove = (uint16_t)bestMove;
     }
 
     // Reverse Futility Pruning / Static Null Move Pruning

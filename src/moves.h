@@ -95,85 +95,80 @@ static inline void generateMoves(Board *board, MoveList *moves) {
     
     int source, target;
     U64 bitboard, attacks;
+
+    int us = board->sideToMove;
+    int them = us ^ 1;
+    U64 friendly = board->occupancies[us];
+    U64 enemy = board->occupancies[them];
+    U64 notFriendly = ~friendly;
+    int knightPiece = us == white ? N : n;
+    int bishopPiece = us == white ? B : b;
+    int rookPiece = us == white ? R : r;
+    int queenPiece = us == white ? Q : q;
+    int kingPiece = us == white ? K : k;
     
     // Knight Moves
-    bitboard = board->bitboards[(board->sideToMove == white) ? N : n];
+    bitboard = board->bitboards[knightPiece];
     while (bitboard) {
         source = getLSBindex(bitboard);
-        attacks = knightAttacks[source] & ((board->sideToMove == white) ? ~board->occupancies[white] : ~board->occupancies[black]);
+        attacks = knightAttacks[source] & notFriendly;
         while (attacks) {
             target = getLSBindex(attacks);
-            //quiet move
-            if (!getBit((board->sideToMove == white)?board->occupancies[black]:board->occupancies[white], target)) {
-                addMove(moves, encodeMove(source, target, (board->sideToMove == white) ? N : n, 0, 0, 0, 0, 0));
-            }
-            //capture move
-            else {
-                addMove(moves, encodeMove(source, target, (board->sideToMove == white) ? N : n, 0, 1, 0, 0, 0));
-            }
-            popBit(attacks, target); // Clear the least significant bit
+            if (!getBit(enemy, target))
+                addMove(moves, encodeMove(source, target, knightPiece, 0, 0, 0, 0, 0));
+            else
+                addMove(moves, encodeMove(source, target, knightPiece, 0, 1, 0, 0, 0));
+            popBit(attacks, target);
         }
-        popBit(bitboard, source); // Clear the least significant bit
+        popBit(bitboard, source);
     }
 
     // Bishop Moves
-    bitboard = board->bitboards[(board->sideToMove == white) ? B : b];
+    bitboard = board->bitboards[bishopPiece];
     while (bitboard) {
         source = getLSBindex(bitboard);
-        attacks = getBishopAttacks(source, board->occupancies[both]) & ((board->sideToMove == white) ? ~board->occupancies[white] : ~board->occupancies[black]);
+        attacks = getBishopAttacks(source, board->occupancies[both]) & notFriendly;
         while (attacks) {
             target = getLSBindex(attacks);
-            //quiet move
-            if (!getBit((board->sideToMove == white)?board->occupancies[black]:board->occupancies[white], target)) {
-                addMove(moves, encodeMove(source, target, (board->sideToMove == white) ? B : b, 0, 0, 0, 0, 0));
-            }
-            //capture move
-            else {
-                addMove(moves, encodeMove(source, target, (board->sideToMove == white) ? B : b, 0, 1, 0, 0, 0));
-            }
-            popBit(attacks, target); // Clear the least significant bit
+            if (!getBit(enemy, target))
+                addMove(moves, encodeMove(source, target, bishopPiece, 0, 0, 0, 0, 0));
+            else
+                addMove(moves, encodeMove(source, target, bishopPiece, 0, 1, 0, 0, 0));
+            popBit(attacks, target);
         }
-        popBit(bitboard, source); // Clear the least significant bit
+        popBit(bitboard, source);
     }
 
     // Rook Moves
-    bitboard = board->bitboards[(board->sideToMove == white) ? R : r];
+    bitboard = board->bitboards[rookPiece];
     while (bitboard) {
         source = getLSBindex(bitboard);
-        attacks = getRookAttacks(source, board->occupancies[both]) & ((board->sideToMove == white) ? ~board->occupancies[white] : ~board->occupancies[black]);
+        attacks = getRookAttacks(source, board->occupancies[both]) & notFriendly;
         while (attacks) {
             target = getLSBindex(attacks);
-            //quiet move
-            if (!getBit((board->sideToMove == white)?board->occupancies[black]:board->occupancies[white], target)) {
-                addMove(moves, encodeMove(source, target, (board->sideToMove == white) ? R : r, 0, 0, 0, 0, 0));
-            }
-            //capture move
-            else {
-                addMove(moves, encodeMove(source, target, (board->sideToMove == white) ? R : r, 0, 1, 0, 0, 0));
-            }
-            popBit(attacks, target); // Clear the least significant bit
+            if (!getBit(enemy, target))
+                addMove(moves, encodeMove(source, target, rookPiece, 0, 0, 0, 0, 0));
+            else
+                addMove(moves, encodeMove(source, target, rookPiece, 0, 1, 0, 0, 0));
+            popBit(attacks, target);
         }
-        popBit(bitboard, source); // Clear the least significant bit
+        popBit(bitboard, source);
     }
 
     // Queen Moves
-    bitboard = board->bitboards[(board->sideToMove == white) ? Q : q];
+    bitboard = board->bitboards[queenPiece];
     while (bitboard) {
         source = getLSBindex(bitboard);
-        attacks = getQueenAttacks(source, board->occupancies[both]) & ((board->sideToMove == white) ? ~board->occupancies[white] : ~board->occupancies[black]);
+        attacks = getQueenAttacks(source, board->occupancies[both]) & notFriendly;
         while (attacks) {
             target = getLSBindex(attacks);
-            //quiet move
-            if (!getBit((board->sideToMove == white)?board->occupancies[black]:board->occupancies[white], target)) {
-                addMove(moves, encodeMove(source, target, (board->sideToMove == white) ? Q : q, 0, 0, 0, 0, 0));
-            }
-            //capture move
-            else {
-                addMove(moves, encodeMove(source, target, (board->sideToMove == white) ? Q : q, 0, 1, 0, 0, 0));
-            }
-            popBit(attacks, target); // Clear the least significant bit
+            if (!getBit(enemy, target))
+                addMove(moves, encodeMove(source, target, queenPiece, 0, 0, 0, 0, 0));
+            else
+                addMove(moves, encodeMove(source, target, queenPiece, 0, 1, 0, 0, 0));
+            popBit(attacks, target);
         }
-        popBit(bitboard, source); // Clear the least significant bit
+        popBit(bitboard, source);
     }
 
     // Pawn moves
@@ -333,23 +328,19 @@ static inline void generateMoves(Board *board, MoveList *moves) {
     }
 
     // Normal King Moves
-    bitboard = board->bitboards[board->sideToMove == white ? K : k];
+    bitboard = board->bitboards[kingPiece];
     while (bitboard){
         source = getLSBindex(bitboard);
-        attacks = kingAttacks[source] & ((board->sideToMove == white) ? ~board->occupancies[white] : ~board->occupancies[black]);
+        attacks = kingAttacks[source] & notFriendly;
         while (attacks) {
             target = getLSBindex(attacks);
-            //quiet move
-            if (!getBit((board->sideToMove == white)?board->occupancies[black]:board->occupancies[white], target)) {
-                addMove(moves, encodeMove(source, target, (board->sideToMove == white) ? K : k, 0, 0, 0, 0, 0));
-            }
-            //capture move
-            else {
-                addMove(moves, encodeMove(source, target, (board->sideToMove == white) ? K : k, 0, 1, 0, 0, 0));
-            }
-            popBit(attacks, target); // Clear the least significant bit
+            if (!getBit(enemy, target))
+                addMove(moves, encodeMove(source, target, kingPiece, 0, 0, 0, 0, 0));
+            else
+                addMove(moves, encodeMove(source, target, kingPiece, 0, 1, 0, 0, 0));
+            popBit(attacks, target);
         }
-        popBit(bitboard, source); // Clear the least significant bit
+        popBit(bitboard, source);
     }
 }
 
@@ -357,55 +348,62 @@ static inline void generateCaptures(Board *board, MoveList *moves) {
     moves->count = 0;
     int source, target;
     U64 bitboard, attacks;
-    U64 enemy = board->occupancies[board->sideToMove ^ 1];
+
+    int us = board->sideToMove;
+    U64 enemy = board->occupancies[us ^ 1];
+    int knightPiece = us == white ? N : n;
+    int bishopPiece = us == white ? B : b;
+    int rookPiece = us == white ? R : r;
+    int queenPiece = us == white ? Q : q;
+    int kingPiece = us == white ? K : k;
 
     // Knight captures
-    bitboard = board->bitboards[(board->sideToMove == white) ? N : n];
+    bitboard = board->bitboards[knightPiece];
     while (bitboard) {
         source = getLSBindex(bitboard);
         attacks = knightAttacks[source] & enemy;
         while (attacks) {
             target = getLSBindex(attacks);
-            addMove(moves, encodeMove(source, target, (board->sideToMove == white) ? N : n, 0, 1, 0, 0, 0));
+            addMove(moves, encodeMove(source, target, knightPiece, 0, 1, 0, 0, 0));
             popBit(attacks, target);
         }
         popBit(bitboard, source);
     }
 
     // Bishop captures
-    bitboard = board->bitboards[(board->sideToMove == white) ? B : b];
+    bitboard = board->bitboards[bishopPiece];
     while (bitboard) {
         source = getLSBindex(bitboard);
         attacks = getBishopAttacks(source, board->occupancies[both]) & enemy;
         while (attacks) {
             target = getLSBindex(attacks);
-            addMove(moves, encodeMove(source, target, (board->sideToMove == white) ? B : b, 0, 1, 0, 0, 0));
+            addMove(moves, encodeMove(source, target, bishopPiece, 0, 1, 0, 0, 0));
             popBit(attacks, target);
         }
         popBit(bitboard, source);
     }
 
     // Rook captures
-    bitboard = board->bitboards[(board->sideToMove == white) ? R : r];
+    bitboard = board->bitboards[rookPiece];
     while (bitboard) {
         source = getLSBindex(bitboard);
         attacks = getRookAttacks(source, board->occupancies[both]) & enemy;
         while (attacks) {
             target = getLSBindex(attacks);
-            addMove(moves, encodeMove(source, target, (board->sideToMove == white) ? R : r, 0, 1, 0, 0, 0));
+            addMove(moves, encodeMove(source, target, rookPiece, 0, 1, 0, 0, 0));
             popBit(attacks, target);
         }
         popBit(bitboard, source);
     }
 
     // Queen captures
-    bitboard = board->bitboards[(board->sideToMove == white) ? Q : q];
+    bitboard = board->bitboards[queenPiece];
     while (bitboard) {
         source = getLSBindex(bitboard);
         attacks = getQueenAttacks(source, board->occupancies[both]) & enemy;
         while (attacks) {
             target = getLSBindex(attacks);
-            addMove(moves, encodeMove(source, target, (board->sideToMove == white) ? Q : q, 0, 1, 0, 0, 0));
+            addMove(moves, encodeMove(source, target, queenPiece, 0, 1, 0, 0, 0));
             popBit(attacks, target);
         }
         popBit(bitboard, source);
@@ -487,13 +485,13 @@ static inline void generateCaptures(Board *board, MoveList *moves) {
     }
 
     // King captures
-    bitboard = board->bitboards[board->sideToMove == white ? K : k];
+    bitboard = board->bitboards[kingPiece];
     while (bitboard) {
         source = getLSBindex(bitboard);
         attacks = kingAttacks[source] & enemy;
         while (attacks) {
             target = getLSBindex(attacks);
-            addMove(moves, encodeMove(source, target, (board->sideToMove == white) ? K : k, 0, 1, 0, 0, 0));
+            addMove(moves, encodeMove(source, target, kingPiece, 0, 1, 0, 0, 0));
             popBit(attacks, target);
         }
         popBit(bitboard, source);

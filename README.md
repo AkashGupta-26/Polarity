@@ -204,6 +204,7 @@ Multiple techniques are implemented to improve the search efficiency:
 | V2.13.3 | Timing fixes, NPS reporting, makefile -O3 optimization | +104 vs V2.5 |
 | V2.14 | NPS optimization: lazy move ordering, capture-only movegen, incremental occupancy, SEE caching, eval attack dedup, double-copy elimination | +45 |
 | V2.15 | TT overhaul: clustered 4-way buckets, power-of-2 indexing, age replacement, prefetch, static eval caching, hashfull reporting | +38 |
+| V2.15.2 | NPS optimization: merged TT probe, hoisted movegen side indices, eager givesCheck, stride-2 repetition detection, compile-guarded hash stats | +50 vs V2.14 |
 
 ---
 ## Note on AI Assistance

@@ -323,8 +323,19 @@ int hashfull() {
     return used * 1000 / (sampleBuckets * 4);
 }
 
-static inline int readHashEntry(Board *board, int *bestMove, int alpha, int beta, int depth, int ply = 0) {
-    extern U64 hashHits, hashExactHits, hashAlphaHits, hashBetaHits, hashMoveOrderHits;
+struct TTProbeResult {
+    int score;
+    int ttMove;
+    int ttEval;
+    bool hit;
+};
+
+static inline TTProbeResult probeHashEntry(Board *board, int alpha, int beta, int depth, int ply = 0) {
+    TTProbeResult result;
+    result.score = noHashEntry;
+    result.ttMove = 0;
+    result.ttEval = -32768;
+    result.hit = false;
 
     U64 key = board->zobristHash;
     uint16_t key16 = (uint16_t)(key & 0xFFFF);
@@ -333,12 +344,19 @@ static inline int readHashEntry(Board *board, int *bestMove, int alpha, int beta
     for (int i = 0; i < 4; i++) {
         TTEntry *entry = &bucket->entries[i];
         if (entry->key16 == key16 && entry->genBound != 0) {
-            hashHits++;
+            result.hit = true;
 
-            if (entry->move != 0) {
-                *bestMove = (int)entry->move;
-                hashMoveOrderHits++;
-            }
+            if (entry->move != 0)
+                result.ttMove = (int)entry->move;
+
+            if (entry->staticEval != (int16_t)-32768)
+                result.ttEval = (int)entry->staticEval;
+
+#ifdef HASH_STATS
+            extern U64 hashHits, hashExactHits, hashAlphaHits, hashBetaHits, hashMoveOrderHits;
+            hashHits++;
+            if (entry->move != 0) hashMoveOrderHits++;
+#endif
 
             if (entry->depth >= depth) {
                 int value = (int)entry->value;
@@ -348,40 +366,31 @@ static inline int readHashEntry(Board *board, int *bestMove, int alpha, int beta
 
                 int bound = entry->genBound & 3;
                 if (bound == hashExact) {
+#ifdef HASH_STATS
                     hashExactHits++;
-                    return value;
+#endif
+                    result.score = value;
+                    return result;
                 }
                 if (bound == hashAlpha && value <= alpha) {
+#ifdef HASH_STATS
                     hashAlphaHits++;
-                    return alpha;
+#endif
+                    result.score = alpha;
+                    return result;
                 }
                 if (bound == hashBeta && value >= beta) {
+#ifdef HASH_STATS
                     hashBetaHits++;
-                    return beta;
+#endif
+                    result.score = beta;
+                    return result;
                 }
             }
-            return noHashEntry;
+            return result;
         }
     }
-    return noHashEntry;
-}
-
-static inline int readHashEntryEval(Board *board, int *bestMove, int *ttEval) {
-    U64 key = board->zobristHash;
-    uint16_t key16 = (uint16_t)(key & 0xFFFF);
-    TTBucket *bucket = getTTBucket(key);
-
-    for (int i = 0; i < 4; i++) {
-        TTEntry *entry = &bucket->entries[i];
-        if (entry->key16 == key16 && entry->genBound != 0) {
-            if (entry->move != 0)
-                *bestMove = (int)entry->move;
-            if (entry->staticEval != (int16_t)-32768)
-                *ttEval = (int)entry->staticEval;
-            return 1;
-        }
-    }
-    return 0;
+    return result;
 }
 
 static inline void writeHashEntry(Board *board, int bestMove, int value, int depth, int flag, int ply = 0, int staticEval = -32768) {

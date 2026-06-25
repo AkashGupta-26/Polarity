@@ -74,11 +74,13 @@ const int HISTORY_MAX = 8192;
 int ply; 
 U64 searchedNodes;
 
+#ifdef HASH_STATS
 U64 hashHits = 0;
 U64 hashExactHits = 0;
 U64 hashAlphaHits = 0;
 U64 hashBetaHits = 0;
 U64 hashMoveOrderHits = 0;
+#endif
 
 // Late Move Reduction (LMR) parameters
 const int FullDepthMoves = 4;
@@ -322,9 +324,11 @@ static inline void pickMove(MoveList *list, int startIdx, int searchPly) {
 }
 
 static inline int detectRepetition(Board *board) {
-    int count = 0;
     int limit = std::max(0, repetitionIndex - board->halfMoveClock);
-    for (int i = repetitionIndex - 1; i >= limit; i -= 1) {
+    if (repetitionIndex - limit < 4)
+        return 0;
+    int count = 0;
+    for (int i = repetitionIndex - 2; i >= limit; i -= 2) {
         if (repetitionTable[i] == board->zobristHash) {
             if (i < gameHistoryPly)
                 return 1;
@@ -369,10 +373,10 @@ static inline int quiescenceSearch(Board *board, int alpha, int beta, int qDepth
     if (ply > maxPly - 1) 
         return evaluate(board);
 
-    int ttMove = 0;
-    int ttScore = readHashEntry(board, &ttMove, alpha, beta, 0, ply);
-    if (ttScore != noHashEntry && ply)
-        return ttScore;
+    TTProbeResult ttProbe = probeHashEntry(board, alpha, beta, 0, ply);
+    int ttMove = ttProbe.ttMove;
+    if (ttProbe.score != noHashEntry && ply)
+        return ttProbe.score;
 
     int inCheck = isBoardInCheck(board);
 
@@ -486,9 +490,11 @@ static inline int negamax(Board *board, int alpha, int beta, int depth) {
 
     if (inCheck) depth++;
 
-    if (ply && (score = readHashEntry(board, &bestMove, alpha, beta, depth, ply)) != noHashEntry) {
+    TTProbeResult ttProbe = probeHashEntry(board, alpha, beta, depth, ply);
+    if (ttProbe.ttMove != 0) bestMove = ttProbe.ttMove;
+    if (ply && ttProbe.score != noHashEntry) {
         if (!PVnode)
-            return score;
+            return ttProbe.score;
     }
 
     uint16_t hashMove = (uint16_t)bestMove;
@@ -504,16 +510,15 @@ static inline int negamax(Board *board, int alpha, int beta, int depth) {
     int legalMoves = 0;
     int movesSearched = 0;
 
-    int ttEval = -32768;
-    readHashEntryEval(board, &bestMove, &ttEval);
-    int staticEval = (ttEval != -32768) ? ttEval : evaluate(board);
+    int staticEval = (ttProbe.ttEval != -32768) ? ttProbe.ttEval : evaluate(board);
     staticEvalHistory[ply] = staticEval;
     bool improving = (ply >= 2 && staticEval > staticEvalHistory[ply - 2]);
 
     // Internal iterative deepening when no hash move is available
     if (depth >= 5 && bestMove == 0 && !inCheck) {
         negamax(board, alpha, beta, depth - 2);
-        readHashEntry(board, &bestMove, -INFINITY, INFINITY, 1, ply);
+        TTProbeResult iidProbe = probeHashEntry(board, -INFINITY, INFINITY, 1, ply);
+        if (iidProbe.ttMove != 0) bestMove = iidProbe.ttMove;
         hashMove = (uint16_t)bestMove;
     }
 
@@ -613,11 +618,10 @@ static inline int negamax(Board *board, int alpha, int beta, int depth) {
         prevMovePiece[ply] = decodePiece(move);
         prevMoveTarget[ply] = decodeTarget(move);
 
-        int givesCheck = -1; // -1 = not computed yet
+        int givesCheck = isBoardInCheck(board);
 
         if (!PVnode && !inCheck && movesSearched > 0 && !ttMoveMatch(move, hashMove)) {
             if (depth <= 4 && !isCapture && !isPromotion) {
-                if (givesCheck == -1) givesCheck = isBoardInCheck(board);
                 if (!givesCheck &&
                     movesSearched >= lmpThreshold[depth] + (improving ? depth : 0)) {
                     ply--;
@@ -628,7 +632,6 @@ static inline int negamax(Board *board, int alpha, int beta, int depth) {
             }
 
             if (depth <= 3 && !isCapture && !isPromotion) {
-                if (givesCheck == -1) givesCheck = isBoardInCheck(board);
                 if (!givesCheck &&
                     staticEval + futilityMargins[depth] + (improving ? 80 : 0) <= alpha) {
                     ply--;
@@ -642,7 +645,6 @@ static inline int negamax(Board *board, int alpha, int beta, int depth) {
         if (movesSearched == 0) {
             score = -negamax(board, -beta, -alpha, depth - 1);
         } else {
-            if (givesCheck == -1) givesCheck = isBoardInCheck(board);
             if (movesSearched >= FullDepthMoves && depth >= ReductionLimit &&
                 !inCheck && !givesCheck && !isCapture && !isPromotion) {
                 int reduction = lmrReduction(depth, movesSearched, improving);
@@ -731,11 +733,13 @@ void searchPosition(Board *board, SearchUCI *searchparams) {
     scorePrincipalVariation = 0;
     gameHistoryPly = repetitionIndex;
 
+#ifdef HASH_STATS
     hashHits = 0;
     hashExactHits = 0;
     hashAlphaHits = 0;
     hashBetaHits = 0;
     hashMoveOrderHits = 0;
+#endif
 
     int alpha = -INFINITY;
     int beta = INFINITY;
@@ -827,6 +831,7 @@ void searchPosition(Board *board, SearchUCI *searchparams) {
         std::cout << std::endl;
     }
 
+#ifdef HASH_STATS
     U64 totalCutoffs = hashExactHits + hashAlphaHits + hashBetaHits;
     double hashHitRate = searchedNodes > 0 ? (100.0 * hashHits / searchedNodes) : 0.0;
     double cutoffRate = hashHits > 0 ? (100.0 * totalCutoffs / hashHits) : 0.0;
@@ -842,14 +847,15 @@ void searchPosition(Board *board, SearchUCI *searchparams) {
               << " (" << cutoffRate << "%) "
               << "Moves=" << hashMoveOrderHits
               << " (" << moveOrderRate << "%)" << std::endl;
+#endif
 
     if (PrincipalVariationLastIterationLength > 0 && PrincipalVariationLastIteration[0] != 0) {
         std::cout << "bestmove " << moveToUCI(PrincipalVariationLastIteration[0]) << std::endl;
     } else {
         int fallbackMove = 0;
 
-        int ttMove = 0;
-        readHashEntry(board, &ttMove, -INFINITY, INFINITY, 0);
+        TTProbeResult fallbackProbe = probeHashEntry(board, -INFINITY, INFINITY, 0);
+        int ttMove = fallbackProbe.ttMove;
         if (ttMove != 0) {
             MoveList ttList;
             generateMoves(board, &ttList);

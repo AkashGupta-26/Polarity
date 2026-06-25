@@ -5,6 +5,13 @@
 #include "random.h"
 #include <sstream>
 #include <cstring>
+#include <cstdint>
+
+#ifdef _MSC_VER
+#include <intrin.h>
+#else
+#include <x86intrin.h>
+#endif
 
 /*
     This is our board representation 
@@ -211,104 +218,222 @@ void parseFEN(Board* board, const std::string& fen) {
 #define hashAlpha 1
 #define hashBeta 2
 
-long long TranspositionTableEntries;
-#define getTTIndex(key) ((key) % TranspositionTableEntries)
+#define noHashEntry 100000
 
-#define noHashEntry 100000 // outside alpha-beta bounds
-
-typedef struct {
-    U64 key;
-    int depth;
-    int flag; // 0: exact, 1: alpha, 2: beta
-    int value;
-    int bestMove;
-} HashEntry;
-
-// Transposition Table
-HashEntry *TranspositionTable = NULL;
-
-void clearTranspositionTable() {
-    for (int i = 0; i < TranspositionTableEntries; ++i) {
-        TranspositionTable[i].key = 0ULL;
-        TranspositionTable[i].depth = 0;
-        TranspositionTable[i].flag = 0;
-        TranspositionTable[i].value = 0;
-        TranspositionTable[i].bestMove = 0;
-    }
+// TT move encoding: store only source(6) + target(6) + promoted(4) = 16 bits
+static inline uint16_t moveToTTMove(int move) {
+    if (move == 0) return 0;
+    return (uint16_t)((move & 0x3F) | ((move >> 6) & 0x3F) << 6 | ((move >> 16) & 0xF) << 12);
 }
 
-void initializeTranspositionSize(int MB){
+static inline int ttMoveToMove(uint16_t ttMove) {
+    return (int)ttMove;
+}
+
+static inline bool ttMoveMatch(int move, uint16_t ttMove) {
+    if (ttMove == 0) return false;
+    uint16_t compressed = moveToTTMove(move);
+    return compressed == ttMove;
+}
+
+struct TTEntry {
+    uint16_t key16;
+    int16_t  value;
+    int16_t  staticEval;
+    uint16_t move;
+    int8_t   depth;
+    uint8_t  genBound;
+};
+
+static_assert(sizeof(TTEntry) == 10, "TTEntry must be 10 bytes");
+
+struct TTBucket {
+    TTEntry entries[4];
+    uint8_t padding[24];
+};
+
+static_assert(sizeof(TTBucket) == 64, "TTBucket must be 64 bytes (one cache line)");
+
+TTBucket *TranspositionTable = NULL;
+uint32_t ttNumBuckets = 0;
+uint32_t ttBucketMask = 0;
+uint8_t ttGeneration = 0;
+
+static inline TTBucket* getTTBucket(U64 key) {
+    return &TranspositionTable[(key >> 32) & ttBucketMask];
+}
+
+static inline void ttPrefetch(U64 key) {
+#if defined(_MSC_VER)
+    _mm_prefetch((const char*)getTTBucket(key), _MM_HINT_T0);
+#else
+    __builtin_prefetch(getTTBucket(key));
+#endif
+}
+
+static inline void incrementTTGeneration() {
+    ttGeneration += 4; // lower 2 bits reserved for bound type
+}
+
+static inline int ttEntryQuality(const TTEntry &e) {
+    int ageDelta = ((ttGeneration & 0xFC) - (e.genBound & 0xFC)) & 0xFC;
+    return (int)e.depth - (ageDelta >> 2) * 4 + ((e.genBound & 3) == hashExact ? 2 : 0);
+}
+
+void clearTranspositionTable() {
+    if (TranspositionTable != NULL)
+        memset(TranspositionTable, 0, (size_t)ttNumBuckets * sizeof(TTBucket));
+}
+
+static inline uint32_t roundDownPow2(uint32_t v) {
+    v |= v >> 1;
+    v |= v >> 2;
+    v |= v >> 4;
+    v |= v >> 8;
+    v |= v >> 16;
+    return (v >> 1) + 1;
+}
+
+void initializeTranspositionSize(int MB) {
     if (MB <= 0) {
         std::cout << "Invalid size for transposition table, must be greater than 0 MB" << std::endl;
         return;
     }
-    TranspositionTableEntries = MB * 1024 * 1024 / sizeof(HashEntry);
+    uint32_t totalBuckets = (uint32_t)((uint64_t)MB * 1024 * 1024 / sizeof(TTBucket));
+    ttNumBuckets = roundDownPow2(totalBuckets);
+    ttBucketMask = ttNumBuckets - 1;
+
     if (TranspositionTable != NULL) {
-        delete[] TranspositionTable; // Free existing table if it exists
+        delete[] TranspositionTable;
     }
-    TranspositionTable = new HashEntry[TranspositionTableEntries];
+    TranspositionTable = new TTBucket[ttNumBuckets];
     if (TranspositionTable == NULL) {
-        std::cout << "Failed to allocate memory for transposition table, trying " << MB/2 << " MB" << std::endl;
-        initializeTranspositionSize(MB/2);
-    }
-    else{
-        clearTranspositionTable(); // Clear the table after allocation
-        std::cout << "Transposition table initialized with " << TranspositionTableEntries << " entries." << std::endl;
+        std::cout << "Failed to allocate memory for transposition table, trying " << MB / 2 << " MB" << std::endl;
+        initializeTranspositionSize(MB / 2);
+    } else {
+        clearTranspositionTable();
+        std::cout << "Transposition table initialized with " << ttNumBuckets
+                  << " buckets (" << ttNumBuckets * 4 << " entries)." << std::endl;
     }
 }
 
-static inline int readHashEntry(Board *board, int* bestMove, int alpha, int beta, int depth, int ply = 0) {
+int hashfull() {
+    int used = 0;
+    int sampleBuckets = (ttNumBuckets < 1000) ? ttNumBuckets : 1000;
+    for (int i = 0; i < sampleBuckets; i++)
+        for (int j = 0; j < 4; j++)
+            if ((TranspositionTable[i].entries[j].genBound & 0xFC) == (ttGeneration & 0xFC))
+                used++;
+    return used * 1000 / (sampleBuckets * 4);
+}
+
+static inline int readHashEntry(Board *board, int *bestMove, int alpha, int beta, int depth, int ply = 0) {
     extern U64 hashHits, hashExactHits, hashAlphaHits, hashBetaHits, hashMoveOrderHits;
-    HashEntry *entry = &TranspositionTable[getTTIndex(board->zobristHash)];
 
-    if (entry->key == board->zobristHash){
-        hashHits++;
-        *bestMove = entry->bestMove;
-        if (entry->bestMove != 0) hashMoveOrderHits++;
+    U64 key = board->zobristHash;
+    uint16_t key16 = (uint16_t)(key & 0xFFFF);
+    TTBucket *bucket = getTTBucket(key);
 
-        if (entry->depth >= depth){
-            int value = entry->value;
+    for (int i = 0; i < 4; i++) {
+        TTEntry *entry = &bucket->entries[i];
+        if (entry->key16 == key16 && entry->genBound != 0) {
+            hashHits++;
 
-            if (value < -MATESCORE) value += ply;
-            if (value > MATESCORE) value -= ply;
-
-            if (entry->flag == hashExact) {
-                hashExactHits++;
-                return value;
+            if (entry->move != 0) {
+                *bestMove = (int)entry->move;
+                hashMoveOrderHits++;
             }
-            if (entry->flag == hashAlpha && value <= alpha) {
-                hashAlphaHits++;
-                return alpha;
+
+            if (entry->depth >= depth) {
+                int value = (int)entry->value;
+
+                if (value < -MATESCORE) value += ply;
+                if (value > MATESCORE) value -= ply;
+
+                int bound = entry->genBound & 3;
+                if (bound == hashExact) {
+                    hashExactHits++;
+                    return value;
+                }
+                if (bound == hashAlpha && value <= alpha) {
+                    hashAlphaHits++;
+                    return alpha;
+                }
+                if (bound == hashBeta && value >= beta) {
+                    hashBetaHits++;
+                    return beta;
+                }
             }
-            if (entry->flag == hashBeta && value >= beta) {
-                hashBetaHits++;
-                return beta;
-            }
+            return noHashEntry;
         }
     }
     return noHashEntry;
 }
 
-static inline void writeHashEntry(Board *board, int bestMove, int value, int depth, int flag, int ply = 0) {
-    HashEntry *entry = &TranspositionTable[getTTIndex(board->zobristHash)];
+static inline int readHashEntryEval(Board *board, int *bestMove, int *ttEval) {
+    U64 key = board->zobristHash;
+    uint16_t key16 = (uint16_t)(key & 0xFFFF);
+    TTBucket *bucket = getTTBucket(key);
 
-    if (entry->key == board->zobristHash) {
-        if (entry->depth > depth && flag != hashExact)
-            return;
-    } else {
-        if (entry->depth > depth + 3 && entry->flag == hashExact)
-            return;
+    for (int i = 0; i < 4; i++) {
+        TTEntry *entry = &bucket->entries[i];
+        if (entry->key16 == key16 && entry->genBound != 0) {
+            if (entry->move != 0)
+                *bestMove = (int)entry->move;
+            if (entry->staticEval != -32768)
+                *ttEval = (int)entry->staticEval;
+            return 1;
+        }
     }
+    return 0;
+}
+
+static inline void writeHashEntry(Board *board, int bestMove, int value, int depth, int flag, int ply = 0, int staticEval = -32768) {
+    U64 key = board->zobristHash;
+    uint16_t key16 = (uint16_t)(key & 0xFFFF);
+    TTBucket *bucket = getTTBucket(key);
 
     if (value < -MATESCORE) value -= ply;
     if (value > MATESCORE) value += ply;
 
-    entry->key = board->zobristHash;
-    entry->depth = depth;
-    entry->flag = flag;
-    entry->value = value;
-    if (bestMove != 0 || entry->key != board->zobristHash)
-        entry->bestMove = bestMove;
+    int16_t storedValue = (int16_t)std::max(-32767, std::min(32767, value));
+    int16_t storedEval = (staticEval == -32768) ? (int16_t)-32768 : (int16_t)std::max(-32767, std::min(32767, staticEval));
+    uint16_t storedMove = moveToTTMove(bestMove);
+    uint8_t storedGenBound = (ttGeneration & 0xFC) | (flag & 3);
+
+    TTEntry *replace = &bucket->entries[0];
+    int worstQuality = ttEntryQuality(bucket->entries[0]);
+
+    for (int i = 0; i < 4; i++) {
+        TTEntry *entry = &bucket->entries[i];
+
+        if (entry->key16 == key16 || entry->genBound == 0) {
+            if (entry->key16 == key16 && storedMove == 0)
+                storedMove = entry->move;
+            if (entry->key16 == key16 && storedEval == (int16_t)-32768)
+                storedEval = entry->staticEval;
+
+            replace = entry;
+            break;
+        }
+
+        int q = ttEntryQuality(*entry);
+        if (q < worstQuality) {
+            worstQuality = q;
+            replace = entry;
+        }
+    }
+
+    if (replace->key16 == key16 && replace->depth > depth + 2 &&
+        flag != hashExact && (replace->genBound & 3) == hashExact)
+        return;
+
+    replace->key16 = key16;
+    replace->value = storedValue;
+    replace->staticEval = storedEval;
+    replace->move = storedMove;
+    replace->depth = (int8_t)depth;
+    replace->genBound = storedGenBound;
 }
 
 #endif // BOARD_H;

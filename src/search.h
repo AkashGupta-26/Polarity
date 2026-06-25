@@ -299,7 +299,7 @@ int moveScores[maxPly + 1][300];
 
 static inline void scoreMoves(Board *board, MoveList *list, int bestMove, int searchPly) {
     for (int i = 0; i < list->count; ++i) {
-        if (list->moves[i] == bestMove)
+        if (bestMove != 0 && ttMoveMatch(list->moves[i], (uint16_t)bestMove))
             moveScores[searchPly][i] = 30000;
         else
             moveScores[searchPly][i] = scoreMove(board, list->moves[i]);
@@ -428,6 +428,7 @@ static inline int quiescenceSearch(Board *board, int alpha, int beta, int qDepth
             continue;
         }
 
+        ttPrefetch(board->zobristHash);
         legalMoves++;
         ply++;
         repetitionTable[repetitionIndex++] = board->zobristHash;
@@ -490,6 +491,8 @@ static inline int negamax(Board *board, int alpha, int beta, int depth) {
             return score;
     }
 
+    uint16_t hashMove = (uint16_t)bestMove;
+
     if (depth == 0)
         return quiescenceSearch(board, alpha, beta);
 
@@ -501,7 +504,9 @@ static inline int negamax(Board *board, int alpha, int beta, int depth) {
     int legalMoves = 0;
     int movesSearched = 0;
 
-    int staticEval = evaluate(board);
+    int ttEval = -32768;
+    readHashEntryEval(board, &bestMove, &ttEval);
+    int staticEval = (ttEval != -32768) ? ttEval : evaluate(board);
     staticEvalHistory[ply] = staticEval;
     bool improving = (ply >= 2 && staticEval > staticEvalHistory[ply - 2]);
 
@@ -588,7 +593,7 @@ static inline int negamax(Board *board, int alpha, int beta, int depth) {
         bool isCapture = decodeCapture(move);
         bool isPromotion = decodePromoted(move);
 
-        if (!PVnode && !inCheck && movesSearched > 0 && move != bestMove &&
+        if (!PVnode && !inCheck && movesSearched > 0 && !ttMoveMatch(move, hashMove) &&
             depth <= 2 && isCapture && !isPromotion && moveScores[nmPly][count] < 0) {
             continue;
         }
@@ -600,6 +605,7 @@ static inline int negamax(Board *board, int alpha, int beta, int depth) {
             continue;
         }
 
+        ttPrefetch(board->zobristHash);
         ply++;
         legalMoves++;
 
@@ -608,7 +614,7 @@ static inline int negamax(Board *board, int alpha, int beta, int depth) {
 
         int givesCheck = -1; // -1 = not computed yet
 
-        if (!PVnode && !inCheck && movesSearched > 0 && move != bestMove) {
+        if (!PVnode && !inCheck && movesSearched > 0 && !ttMoveMatch(move, hashMove)) {
             if (depth <= 4 && !isCapture && !isPromotion) {
                 if (givesCheck == -1) givesCheck = isBoardInCheck(board);
                 if (!givesCheck &&
@@ -681,7 +687,7 @@ static inline int negamax(Board *board, int alpha, int beta, int depth) {
             PrincipalVariationLength[ply] = PrincipalVariationLength[ply + 1];
 
             if (score >= beta) {
-                writeHashEntry(board, bestMove, beta, depth, hashBeta, ply);
+                writeHashEntry(board, bestMove, beta, depth, hashBeta, ply, staticEval);
 
                 if (!isCapture) {
                     killerMoves[1][ply] = killerMoves[0][ply];
@@ -703,7 +709,7 @@ static inline int negamax(Board *board, int alpha, int beta, int depth) {
         alpha = inCheck ? -MATEVALUE + ply : 0;
     }
 
-    writeHashEntry(board, bestMove, alpha, depth, hashFlag, ply);
+    writeHashEntry(board, bestMove, alpha, depth, hashFlag, ply, staticEval);
     return alpha;
 }
 
@@ -716,7 +722,7 @@ void searchPosition(Board *board, SearchUCI *searchparams) {
 
     int depth = searchParams->depth;
 
-    // logFile << "\n\nStarting search with depth: " << depth << "\n";
+    incrementTTGeneration();
 
     ply = 0;
     searchedNodes = 0;
@@ -805,11 +811,11 @@ void searchPosition(Board *board, SearchUCI *searchparams) {
 
         if (score > 10000 || score < -10000) {
             std::cout << "info score mate " << (score > 0 ? (MATEVALUE - score)/2 + 1 : -(MATEVALUE + score)/2 - 1) 
-                << " depth " << curDepth << " nodes " << searchedNodes << " time " << elapsedMs << " nps " << nps << " pv ";
+                << " depth " << curDepth << " nodes " << searchedNodes << " time " << elapsedMs << " nps " << nps << " hashfull " << hashfull() << " pv ";
         }
         else
             std::cout << "info score cp " << score << " depth " << curDepth
-                << " nodes " << searchedNodes << " time " << elapsedMs << " nps " << nps << " pv ";
+                << " nodes " << searchedNodes << " time " << elapsedMs << " nps " << nps << " hashfull " << hashfull() << " pv ";
 
         for (int i = 0; i < PrincipalVariationLength[0]; i++) {
             if (PrincipalVariationTable[0][i] == 0) break;
@@ -844,10 +850,17 @@ void searchPosition(Board *board, SearchUCI *searchparams) {
         int ttMove = 0;
         readHashEntry(board, &ttMove, -INFINITY, INFINITY, 0);
         if (ttMove != 0) {
-            copyBoard(board);
-            if (makeMove(board, ttMove) != 0)
-                fallbackMove = ttMove;
-            takeBack(board, backup);
+            MoveList ttList;
+            generateMoves(board, &ttList);
+            for (int i = 0; i < ttList.count; i++) {
+                if (ttMoveMatch(ttList.moves[i], (uint16_t)ttMove)) {
+                    copyBoard(board);
+                    if (makeMove(board, ttList.moves[i]) != 0)
+                        fallbackMove = ttList.moves[i];
+                    takeBack(board, backup);
+                    break;
+                }
+            }
         }
 
         if (fallbackMove == 0) {

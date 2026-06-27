@@ -327,14 +327,9 @@ static inline int detectRepetition(Board *board) {
     int limit = std::max(0, repetitionIndex - board->halfMoveClock);
     if (repetitionIndex - limit < 4)
         return 0;
-    int count = 0;
     for (int i = repetitionIndex - 2; i >= limit; i -= 2) {
         if (repetitionTable[i] == board->zobristHash) {
-            if (i < gameHistoryPly)
-                return 1;
-            count++;
-            if (count >= 2)
-                return 1;
+            return 1;
         }
     }
     return 0;

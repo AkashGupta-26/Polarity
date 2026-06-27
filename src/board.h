@@ -111,6 +111,51 @@ void clearBoard(Board* board) {
     board->halfMoveClock = 0; // Reset half-move clock
 }
 
+std::string boardToFEN(Board* board) {
+    std::string fen;
+    for (int rank = 7; rank >= 0; --rank) {
+        int emptyCount = 0;
+        for (int file = 0; file < 8; ++file) {
+            int square = rank * 8 + file;
+            int piece = none;
+            for (int bbIndex = 0; bbIndex < 12; ++bbIndex) {
+                if (getBit(board->bitboards[bbIndex], square)) {
+                    piece = bbIndex;
+                    break;
+                }
+            }
+            if (piece == none) {
+                emptyCount++;
+            } else {
+                if (emptyCount > 0) { fen += std::to_string(emptyCount); emptyCount = 0; }
+                fen += asciiPieces[piece];
+            }
+        }
+        if (emptyCount > 0) fen += std::to_string(emptyCount);
+        if (rank > 0) fen += '/';
+    }
+
+    fen += (board->sideToMove == white) ? " w " : " b ";
+
+    if (board->castlingRights) {
+        if (board->castlingRights & wk) fen += 'K';
+        if (board->castlingRights & wq) fen += 'Q';
+        if (board->castlingRights & bk) fen += 'k';
+        if (board->castlingRights & bq) fen += 'q';
+    } else {
+        fen += '-';
+    }
+
+    fen += ' ';
+    if (board->enPassantSquare != noSquare)
+        fen += indexToSquare[board->enPassantSquare];
+    else
+        fen += '-';
+
+    fen += ' ' + std::to_string(board->halfMoveClock) + " 1";
+    return fen;
+}
+
 void printBoard(Board* board) {
     U64* bitboards = board->bitboards;
     int sideToMove = board->sideToMove;
@@ -150,7 +195,8 @@ void printBoard(Board* board) {
 
     std::cout << std::endl;
 
-    std::cout << "Hash: 0x" << std::hex << computeZobristHash(board) << std::dec << std::endl;
+    std::cout << "    Hash: 0x" << std::hex << computeZobristHash(board) << std::dec << std::endl;
+    std::cout << "     FEN: " << boardToFEN(board) << std::endl;
 
     std::cout << std::endl << std::endl;
 }

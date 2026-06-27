@@ -166,7 +166,6 @@ void registerParams(std::vector<TuneParam>& params) {
     reg(&semiOpenFileBonus, "semiOpenFileBonus", 5, 35);
     reg(&openFileBonus, "openFileBonus", 10, 45);
 
-    reg(&pawnShieldBonus, "pawnShieldBonus", 0, 20);
     reg(&pawnShieldMissingPenalty, "pawnShieldMissingPenalty", -25, 0);
 
     reg(&backwardPawnPenalty[0], "backwardPawnPenalty_MG", -25, 0);
@@ -178,8 +177,6 @@ void registerParams(std::vector<TuneParam>& params) {
     reg(&knightOutpostBonus[0], "knightOutpostBonus_MG", 5, 50);
     reg(&knightOutpostBonus[1], "knightOutpostBonus_EG", 0, 30);
 
-    reg(&rookBehindPassedBonus[0], "rookBehindPassedBonus_MG", 0, 30);
-    reg(&rookBehindPassedBonus[1], "rookBehindPassedBonus_EG", 0, 35);
 
     reg(&connectedPassedBonus[0], "connectedPassedBonus_MG", 0, 25);
     reg(&connectedPassedBonus[1], "connectedPassedBonus_EG", 0, 35);
@@ -411,12 +408,10 @@ void printResults(const std::vector<TuneParam>& params) {
     std::cout << "tempoBonus = " << tempoBonus << ";" << std::endl;
     std::cout << "semiOpenFileBonus = " << semiOpenFileBonus << ";" << std::endl;
     std::cout << "openFileBonus = " << openFileBonus << ";" << std::endl;
-    std::cout << "pawnShieldBonus = " << pawnShieldBonus << ";" << std::endl;
     std::cout << "pawnShieldMissingPenalty = " << pawnShieldMissingPenalty << ";" << std::endl;
     std::cout << "backwardPawnPenalty[2] = {" << backwardPawnPenalty[0] << ", " << backwardPawnPenalty[1] << "};" << std::endl;
     std::cout << "rookOn7thBonus[2] = {" << rookOn7thBonus[0] << ", " << rookOn7thBonus[1] << "};" << std::endl;
     std::cout << "knightOutpostBonus[2] = {" << knightOutpostBonus[0] << ", " << knightOutpostBonus[1] << "};" << std::endl;
-    std::cout << "rookBehindPassedBonus[2] = {" << rookBehindPassedBonus[0] << ", " << rookBehindPassedBonus[1] << "};" << std::endl;
     std::cout << "connectedPassedBonus[2] = {" << connectedPassedBonus[0] << ", " << connectedPassedBonus[1] << "};" << std::endl;
     std::cout << "badBishopPenalty[2] = {" << badBishopPenalty[0] << ", " << badBishopPenalty[1] << "};" << std::endl;
     std::cout << "blockedPasserPenalty[2] = {" << blockedPasserPenalty[0] << ", " << blockedPasserPenalty[1] << "};" << std::endl;

@@ -100,7 +100,7 @@ We are using a tapered evaluation scheme based on `PeSTO` tables, with separate 
 
 **Pawn Structure** — We detect doubled pawns, isolated pawns, backward pawns, passed pawns, connected passers, and blocked passers. Passed pawns get bonuses that scale with rank, and we also factor in king proximity to passers in the endgame. Free passers (no blocker in front) get an extra bonus, halved for rook pawns since they're harder to promote. We also give a small bonus for pawn duos (adjacent friendly pawns on the same rank).
 
-**Piece Evaluation** — Beyond the piece-square tables, we evaluate bishop pairs, bad bishops (pawns on the same color), knight outposts (defended by a pawn and can't be kicked by an enemy pawn), and rooks on open/semi-open files, the 7th rank, and behind passed pawns.
+**Piece Evaluation** — Beyond the piece-square tables, we evaluate bishop pairs, bad bishops (pawns on the same color), knight outposts (defended by a pawn and can't be kicked by an enemy pawn), and rooks on open/semi-open files and the 7th rank.
 
 **Mobility** — We compute safe mobility for each piece: the number of squares a piece can reach that aren't occupied by friendly pieces and aren't defended by enemy pawns. This gives a much more accurate picture of piece activity than just counting all reachable squares.
 
@@ -205,6 +205,7 @@ Multiple techniques are implemented to improve the search efficiency:
 | V2.14 | NPS optimization: lazy move ordering, capture-only movegen, incremental occupancy, SEE caching, eval attack dedup, double-copy elimination | +45 |
 | V2.15 | TT overhaul: clustered 4-way buckets, power-of-2 indexing, age replacement, prefetch, static eval caching, hashfull reporting | +38 |
 | V2.15.2 | NPS optimization: merged TT probe, hoisted movegen side indices, eager givesCheck, stride-2 repetition detection, compile-guarded hash stats | +50 vs V2.14 |
+| V2.15.3 | Remove dead eval code (rookBehindPassedBonus=0, pawnShieldBonus=0), add FEN generator to `d` command | — |
 
 ---
 ## Note on AI Assistance

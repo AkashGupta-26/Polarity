@@ -228,7 +228,6 @@ EVAL_PARAM int tempoBonus = 10;
 EVAL_PARAM int semiOpenFileBonus = 10;
 EVAL_PARAM int openFileBonus = 12;
 
-EVAL_PARAM int pawnShieldBonus = 0;
 EVAL_PARAM int pawnShieldMissingPenalty = -9;
 
 EVAL_PARAM int backwardPawnPenalty[2] = {-10, -16};
@@ -236,7 +235,6 @@ EVAL_PARAM int backwardPawnPenalty[2] = {-10, -16};
 EVAL_PARAM int rookOn7thBonus[2] = {5, 15};
 
 EVAL_PARAM int knightOutpostBonus[2] = {21, 16};
-EVAL_PARAM int rookBehindPassedBonus[2] = {0, 0};
 EVAL_PARAM int connectedPassedBonus[2] = {0, 7};
 
 EVAL_PARAM int badBishopPenalty[2] = {-2, -10};
@@ -615,19 +613,6 @@ static inline int evaluate(Board *board) {
                         }
                     }
 
-                    {
-                        U64 friendlyPawnsOnFile = board->bitboards[P] & fileMasks[square];
-                        while (friendlyPawnsOnFile) {
-                            int pawnSq = getLSBindex(friendlyPawnsOnFile);
-                            if (((board->bitboards[p] | (board->bitboards[P] & fileMasks[pawnSq])) & passedPawnMasks[white][pawnSq]) == 0 &&
-                                square / 8 < pawnSq / 8) {
-                                mgScore += rookBehindPassedBonus[0];
-                                egScore += rookBehindPassedBonus[1];
-                                break;
-                            }
-                            popBit(friendlyPawnsOnFile, pawnSq);
-                        }
-                    }
                     break;
 
                 case Q:
@@ -656,7 +641,6 @@ static inline int evaluate(Board *board) {
                     {
                         int pawnsShielding = countBits(board->bitboards[P] & kingAttacks[square]);
                         int expectedShield = (square % 8 == 0 || square % 8 == 7) ? 2 : 3;
-                        mgScore += pawnsShielding * pawnShieldBonus;
                         mgScore += (expectedShield - pawnsShielding) * pawnShieldMissingPenalty;
                     }
                     break;
@@ -806,19 +790,6 @@ static inline int evaluate(Board *board) {
                         }
                     }
 
-                    {
-                        U64 friendlyPawnsOnFile = board->bitboards[p] & fileMasks[square];
-                        while (friendlyPawnsOnFile) {
-                            int pawnSq = getLSBindex(friendlyPawnsOnFile);
-                            if (((board->bitboards[P] | (board->bitboards[p] & fileMasks[pawnSq])) & passedPawnMasks[black][pawnSq]) == 0 &&
-                                square / 8 > pawnSq / 8) {
-                                mgScore -= rookBehindPassedBonus[0];
-                                egScore -= rookBehindPassedBonus[1];
-                                break;
-                            }
-                            popBit(friendlyPawnsOnFile, pawnSq);
-                        }
-                    }
                     break;
                 
                 case q:
@@ -847,7 +818,6 @@ static inline int evaluate(Board *board) {
                     {
                         int pawnsShielding = countBits(board->bitboards[p] & kingAttacks[square]);
                         int expectedShield = (square % 8 == 0 || square % 8 == 7) ? 2 : 3;
-                        mgScore -= pawnsShielding * pawnShieldBonus;
                         mgScore -= (expectedShield - pawnsShielding) * pawnShieldMissingPenalty;
                     }
                     break;

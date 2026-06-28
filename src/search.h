@@ -310,24 +310,15 @@ static inline void pickMove(MoveList *list, int startIdx, int searchPly) {
 }
 
 static inline int detectRepetition(Board *board) {
-    int limit = std::max(0, repetitionIndex - board->halfMoveClock);
-    if (repetitionIndex - limit < 4)
+    if (board->halfMoveClock < 4)
         return 0;
+    int limit = std::max(0, repetitionIndex - board->halfMoveClock);
     for (int i = repetitionIndex - 2; i >= limit; i -= 2) {
         if (repetitionTable[i] == board->zobristHash) {
             return 1;
         }
     }
     return 0;
-}
-
-static inline bool isGameHistoryRepetition(Board *board) {
-    for (int i = std::max(0, gameHistoryPly - 100); i < gameHistoryPly; ++i) {
-        if (repetitionTable[i] == board->zobristHash) {
-            return true;
-        }
-    }
-    return false;
 }
 
 static inline int numLegalMovesInPosition(Board *board) {
@@ -786,7 +777,7 @@ static inline void searchPosition(Board *board, SearchUCI *searchparams) {
         U64 elapsedMs = TIME_IN_MILLISECONDS - searchParams->startTime;
         U64 nps = elapsedMs > 0 ? (searchedNodes * 1000) / elapsedMs : 0;
 
-        if (score > 10000 || score < -10000) {
+        if (score > MATESCORE || score < -MATESCORE) {
             std::cout << "info score mate " << (score > 0 ? (MATEVALUE - score)/2 + 1 : -(MATEVALUE + score)/2 - 1) 
                 << " depth " << curDepth << " nodes " << searchedNodes << " time " << elapsedMs << " nps " << nps << " hashfull " << hashfull() << " pv ";
         }

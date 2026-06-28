@@ -207,6 +207,8 @@ Multiple techniques are implemented to improve the search efficiency:
 | V2.15.2 | NPS optimization: merged TT probe, hoisted movegen side indices, eager givesCheck, stride-2 repetition detection, compile-guarded hash stats | +50 vs V2.14 |
 | V2.15.3 | Remove dead eval code (rookBehindPassedBonus=0, pawnShieldBonus=0), add FEN generator to `d` command | — |
 | V2.15.4 | Add `static inline` to all header-defined functions, `static` to .cpp-local functions and global variables for ODR safety | +37 |
+| V2.15.5 | Modified active hashfull counter, removed dead code | - |
+| V2.15.6 | Fixed int16 overflow when retrieving value from TT by adjusting large constants. Board also initialises to start position by default now.| - |
 
 ---
 ## Note on AI Assistance

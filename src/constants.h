@@ -72,9 +72,9 @@ enum {
     allMoves, OnlyCaptures
 };
 
-static char asciiPieces[13] = "PNBRQKpnbrqk";
+static const char asciiPieces[13] = "PNBRQKpnbrqk";
 
-const char *unicode_pieces[12] = {"♟︎", "♞", "♝", "♜", "♛", "♚", "♙", "♘", "♗", "♖", "♕", "♔"};
+static const char *unicode_pieces[12] = {"♟︎", "♞", "♝", "♜", "♛", "♚", "♙", "♘", "♗", "♖", "♕", "♔"};
 
 const std::unordered_map<char, int> pieceMap = {
     {'P', P}, {'B', B}, {'N', N}, {'R', R}, {'Q', Q}, {'K', K},
@@ -152,9 +152,9 @@ static inline void printBitboard(U64 bitboard) {
 #define TIME_IN_MICROSECONDS std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now().time_since_epoch()).count()
 
 
-#define INFINITY 50000 // Arbitrary large value for alpha-beta pruning
-#define MATEVALUE 49000 // Value for checkmate
-#define MATESCORE 48000 // Lower bound for mate score
+#define INFINITY 32000 // Arbitrary large value for alpha-beta pruning but less than int
+#define MATEVALUE 31000 // Value for checkmate but less than int
+#define MATESCORE 30000 // Lower bound for mate score but less than int
 
 #include <iostream>
 #include <chrono>

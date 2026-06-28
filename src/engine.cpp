@@ -208,6 +208,7 @@ int main(){
     searchParams.depth = 10; // Default search depth
     int uciMode = 1;
     if (uciMode) {
+        parsePosition(&board, start_position);
         uci(&board, &searchParams);
         delete[] TranspositionTable; // Clean up transposition table
         return 0; // Exit after UCI initialization

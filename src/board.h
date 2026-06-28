@@ -264,7 +264,7 @@ static inline void parseFEN(Board* board, const std::string& fen) {
 #define hashAlpha 1
 #define hashBeta 2
 
-#define noHashEntry 100000
+#define noHashEntry 32001
 
 // TT move encoding: store only source(6) + target(6) + promoted(4) = 16 bits
 static inline uint16_t moveToTTMove(int move) {

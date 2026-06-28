@@ -296,18 +296,11 @@ struct TTBucket {
 
 static_assert(sizeof(TTBucket) == 64, "TTBucket must be 64 bytes (one cache line)");
 
-#ifdef HASH_STATS
-static U64 hashHits = 0;
-static U64 hashExactHits = 0;
-static U64 hashAlphaHits = 0;
-static U64 hashBetaHits = 0;
-static U64 hashMoveOrderHits = 0;
-#endif
-
 static TTBucket *TranspositionTable = NULL;
 static uint32_t ttNumBuckets = 0;
 static uint32_t ttBucketMask = 0;
 static uint8_t ttGeneration = 0;
+static uint32_t ttUsedEntries = 0;
 
 static inline TTBucket* getTTBucket(U64 key) {
     return &TranspositionTable[(key >> 32) & ttBucketMask];
@@ -333,6 +326,7 @@ static inline int ttEntryQuality(const TTEntry &e) {
 static inline void clearTranspositionTable() {
     if (TranspositionTable != NULL)
         memset(TranspositionTable, 0, (size_t)ttNumBuckets * sizeof(TTBucket));
+    ttUsedEntries = 0;
 }
 
 static inline uint32_t roundDownPow2(uint32_t v) {
@@ -368,13 +362,9 @@ static inline void initializeTranspositionSize(int MB) {
 }
 
 static inline int hashfull() {
-    int used = 0;
-    int sampleBuckets = (ttNumBuckets < 1000) ? ttNumBuckets : 1000;
-    for (int i = 0; i < sampleBuckets; i++)
-        for (int j = 0; j < 4; j++)
-            if ((TranspositionTable[i].entries[j].genBound & 0xFC) == (ttGeneration & 0xFC))
-                used++;
-    return used * 1000 / (sampleBuckets * 4);
+    uint32_t totalEntries = ttNumBuckets * 4;
+    if (totalEntries == 0) return 0;
+    return (int)((uint64_t)ttUsedEntries * 1000 / totalEntries);
 }
 
 struct TTProbeResult {
@@ -406,11 +396,6 @@ static inline TTProbeResult probeHashEntry(Board *board, int alpha, int beta, in
             if (entry->staticEval != (int16_t)-32768)
                 result.ttEval = (int)entry->staticEval;
 
-#ifdef HASH_STATS
-            hashHits++;
-            if (entry->move != 0) hashMoveOrderHits++;
-#endif
-
             if (entry->depth >= depth) {
                 int value = (int)entry->value;
 
@@ -419,23 +404,14 @@ static inline TTProbeResult probeHashEntry(Board *board, int alpha, int beta, in
 
                 int bound = entry->genBound & 3;
                 if (bound == hashExact) {
-#ifdef HASH_STATS
-                    hashExactHits++;
-#endif
                     result.score = value;
                     return result;
                 }
                 if (bound == hashAlpha && value <= alpha) {
-#ifdef HASH_STATS
-                    hashAlphaHits++;
-#endif
                     result.score = alpha;
                     return result;
                 }
                 if (bound == hashBeta && value >= beta) {
-#ifdef HASH_STATS
-                    hashBetaHits++;
-#endif
                     result.score = beta;
                     return result;
                 }
@@ -466,6 +442,8 @@ static inline void writeHashEntry(Board *board, int bestMove, int value, int dep
         TTEntry *entry = &bucket->entries[i];
 
         if (entry->key16 == key16 || entry->genBound == 0) {
+            if (entry->genBound == 0)
+                ttUsedEntries++;
             if (entry->key16 == key16 && storedMove == 0)
                 storedMove = entry->move;
             if (entry->key16 == key16 && storedEval == (int16_t)-32768)

@@ -3,10 +3,6 @@
 
 #include "evaluate.h"
 #include <algorithm>
-#include <fstream>
-#include <iomanip>
-
-// extern std::ofstream logFile;
 
 struct ScoredMove {
     int move;
@@ -224,8 +220,6 @@ static int PrincipalVariationTable[maxPly][maxPly];
 // follow PV flags
 static int followPrincipalVariation, scorePrincipalVariation;
 
-// debug repetition detection
-static int foundRepetition = 0;
 static int gameHistoryPly = 0;
 
 // Allows Principal Variation to be evaluated first
@@ -720,14 +714,6 @@ static inline void searchPosition(Board *board, SearchUCI *searchparams) {
     scorePrincipalVariation = 0;
     gameHistoryPly = repetitionIndex;
 
-#ifdef HASH_STATS
-    hashHits = 0;
-    hashExactHits = 0;
-    hashAlphaHits = 0;
-    hashBetaHits = 0;
-    hashMoveOrderHits = 0;
-#endif
-
     int alpha = -INFINITY;
     int beta = INFINITY;
 
@@ -749,13 +735,12 @@ static inline void searchPosition(Board *board, SearchUCI *searchparams) {
 
     for (int curDepth = 1; curDepth <= depth; curDepth++){
 
-        if (searchParams->stop or searchParams->quit) {
-            std::cout << "info Search Time Over" << std::endl;
-            break;
-        }
-
         if (searchParams->timedGame && TIME_IN_MILLISECONDS >= searchParams->stopTime) {
             searchParams->stop = 1;
+        }
+        
+        if (searchParams->stop or searchParams->quit) {
+            std::cout << "info Search Time Over" << std::endl;
             break;
         }
 
@@ -817,24 +802,6 @@ static inline void searchPosition(Board *board, SearchUCI *searchparams) {
         PrincipalVariationLastIterationLength = PrincipalVariationLength[0];
         std::cout << std::endl;
     }
-
-#ifdef HASH_STATS
-    U64 totalCutoffs = hashExactHits + hashAlphaHits + hashBetaHits;
-    double hashHitRate = searchedNodes > 0 ? (100.0 * hashHits / searchedNodes) : 0.0;
-    double cutoffRate = hashHits > 0 ? (100.0 * totalCutoffs / hashHits) : 0.0;
-    double moveOrderRate = hashHits > 0 ? (100.0 * hashMoveOrderHits / hashHits) : 0.0;
-
-    std::cout << "info string Hash Stats: "
-              << "Hits=" << hashHits
-              << " (" << std::fixed << std::setprecision(1) << hashHitRate << "%) "
-              << "Exact=" << hashExactHits
-              << " Alpha=" << hashAlphaHits
-              << " Beta=" << hashBetaHits
-              << " Cutoffs=" << totalCutoffs
-              << " (" << cutoffRate << "%) "
-              << "Moves=" << hashMoveOrderHits
-              << " (" << moveOrderRate << "%)" << std::endl;
-#endif
 
     if (PrincipalVariationLastIterationLength > 0 && PrincipalVariationLastIteration[0] != 0) {
         std::cout << "bestmove " << moveToUCI(PrincipalVariationLastIteration[0]) << std::endl;

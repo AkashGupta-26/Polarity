@@ -25,7 +25,7 @@ struct SearchUCI {
     SearchUCI() : depth(10), timedGame(0), startTime(0), stopTime(0), increment(0), quit(0), stop(0) {}
 };
 
-void read_input(SearchUCI *searchParams) 
+static inline void read_input(SearchUCI *searchParams) 
 {
     int bytes;
     char input[256] = "";
@@ -56,7 +56,7 @@ void read_input(SearchUCI *searchParams)
     }
 }
 
-static void communicate(SearchUCI *searchParams) {
+static inline void communicate(SearchUCI *searchParams) {
     if (searchParams->timedGame && TIME_IN_MILLISECONDS >= searchParams->stopTime) {
         searchParams->stop = 1; // Stop the search if time is up
     }
@@ -64,23 +64,15 @@ static void communicate(SearchUCI *searchParams) {
 }
 
 // global initialization
-SearchUCI searchParams[1];
+static SearchUCI searchParams[1];
 
 // Maximum ply depth for search
 const int maxPly = 64;
 const int HISTORY_MAX = 8192;
 
 // Search parameters
-int ply; 
-U64 searchedNodes;
-
-#ifdef HASH_STATS
-U64 hashHits = 0;
-U64 hashExactHits = 0;
-U64 hashAlphaHits = 0;
-U64 hashBetaHits = 0;
-U64 hashMoveOrderHits = 0;
-#endif
+static int ply; 
+static U64 searchedNodes;
 
 // Late Move Reduction (LMR) parameters
 const int FullDepthMoves = 4;
@@ -213,12 +205,12 @@ static inline int lmrReduction(int depth, int movesSearched, bool improving) {
     return reduction;
 }
 
-int killerMoves[2][maxPly];
-int historyMoves[12][64];
-int counterMoves[12][64];
-int prevMovePiece[maxPly];
-int prevMoveTarget[maxPly];
-int staticEvalHistory[maxPly];
+static int killerMoves[2][maxPly];
+static int historyMoves[12][64];
+static int counterMoves[12][64];
+static int prevMovePiece[maxPly];
+static int prevMoveTarget[maxPly];
+static int staticEvalHistory[maxPly];
 
 static inline void updateHistory(int piece, int target, int bonus) {
     int clamped = std::max(-HISTORY_MAX, std::min(HISTORY_MAX, bonus));
@@ -226,15 +218,15 @@ static inline void updateHistory(int piece, int target, int bonus) {
 }
 
 // Table to store principal variation moves
-int PrincipalVariationLength[maxPly]; 
-int PrincipalVariationTable[maxPly][maxPly];
+static int PrincipalVariationLength[maxPly]; 
+static int PrincipalVariationTable[maxPly][maxPly];
 
 // follow PV flags
-int followPrincipalVariation, scorePrincipalVariation;
+static int followPrincipalVariation, scorePrincipalVariation;
 
 // debug repetition detection
-int foundRepetition = 0;
-int gameHistoryPly = 0;
+static int foundRepetition = 0;
+static int gameHistoryPly = 0;
 
 // Allows Principal Variation to be evaluated first
 static inline void enablePrincipalVariationScoring(Board *board, MoveList *list) {
@@ -288,7 +280,7 @@ static inline int scoreMove(Board *board, int move) {
 }
 
 // Print move scores for debugging
-void printMoveScores(Board *board, MoveList *list) {
+static inline void printMoveScores(Board *board, MoveList *list) {
     std::cout << "Move Scores:" << std::endl;
     for (int i = 0; i < list->count; ++i) {
         int move = list->moves[i];
@@ -297,7 +289,7 @@ void printMoveScores(Board *board, MoveList *list) {
     }
 }
 
-int moveScores[maxPly + 1][300];
+static int moveScores[maxPly + 1][300];
 
 static inline void scoreMoves(Board *board, MoveList *list, int bestMove, int searchPly) {
     for (int i = 0; i < list->count; ++i) {
@@ -712,7 +704,7 @@ static inline int negamax(Board *board, int alpha, int beta, int depth) {
 }
 
 
-void searchPosition(Board *board, SearchUCI *searchparams) {
+static inline void searchPosition(Board *board, SearchUCI *searchparams) {
 
     searchParams[0] = *searchparams;
     searchParams->stop = 0; // Reset stop flag

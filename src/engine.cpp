@@ -10,7 +10,7 @@
 
 using namespace std;
 
-int parseMove(Board *board, const string &moveStr) {
+static int parseMove(Board *board, const string &moveStr) {
     // Convert UCI move string like "e2e4", "e7e8q" into move integer
     MoveList moveList[1];
     generateMoves(board, moveList);
@@ -41,7 +41,7 @@ int parseMove(Board *board, const string &moveStr) {
 }
 
 
-void parsePosition(Board *board, const string &input) {
+static void parsePosition(Board *board, const string &input) {
     // Supports "position startpos moves ..." and "position fen ..."
 
     if (input.find("startpos") != string::npos) {
@@ -73,7 +73,7 @@ void parsePosition(Board *board, const string &input) {
 
 // do gepth 6 wtime 180000 ms btime 180000 ms binc 1000 winc 1000 movetime 1000 movestogo 40
 
-void parseGo(Board *board, const string &input, SearchUCI *searchParams) {
+static void parseGo(Board *board, const string &input, SearchUCI *searchParams) {
     // Handles "go depth 10"
     int depth = -1, movestogo = 30, movetime = -1;
     int time = 1800000, inc = 0; // default time per move set to 60 seconds
@@ -138,7 +138,7 @@ void parseGo(Board *board, const string &input, SearchUCI *searchParams) {
     searchPosition(board, searchParams);
 }
 
-void uci(Board *board, SearchUCI *searchParams) {
+static void uci(Board *board, SearchUCI *searchParams) {
 
     int maxHashSize = 128;
     int minHashSize = 4;
@@ -193,7 +193,7 @@ void uci(Board *board, SearchUCI *searchParams) {
     }
 }
 
-void initializeAll() {
+static void initializeAll() {
     initializeMoveTables();
     initializeRandomKeys();
     initializeTranspositionSize(64);

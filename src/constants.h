@@ -72,7 +72,7 @@ enum {
     allMoves, OnlyCaptures
 };
 
-char asciiPieces[13] = "PNBRQKpnbrqk";
+static char asciiPieces[13] = "PNBRQKpnbrqk";
 
 const char *unicode_pieces[12] = {"♟︎", "♞", "♝", "♜", "♛", "♚", "♙", "♘", "♗", "♖", "♕", "♔"};
 
@@ -98,7 +98,7 @@ const std::string indexToSquare[64] = {
     "a8", "b8", "c8", "d8", "e8", "f8", "g8", "h8"
 };
 
-void printBitboard(U64 bitboard) {
+static inline void printBitboard(U64 bitboard) {
     for (int rank = 7; rank >= 0; --rank) {
         std::cout << rank + 1 << "  ";
         for (int file = 0; file < 8; ++file) {
@@ -170,7 +170,7 @@ void printBitboard(U64 bitboard) {
     #include <fcntl.h>
 #endif
 
-int input_waiting() {
+static inline int input_waiting() {
 #ifdef _WIN32
     static bool initialized = false;
     static HANDLE hStdin;

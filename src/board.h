@@ -37,8 +37,8 @@
 #define takeBack(board, backup) \
     memcpy(board, &backup, sizeof(Board));
 
-U64 repetitionTable[1024];
-int repetitionIndex = 0;
+static U64 repetitionTable[1024];
+static int repetitionIndex = 0;
 
 struct Board{
     U64 bitboards[12]; // 12 types of pieces (6 white, 6 black)
@@ -52,12 +52,12 @@ struct Board{
 
 
 // Zobrist Hashing Constants
-U64 pieceZobristKeys[12][64];
-U64 enpassantZobristKeys[65];
-U64 castlingZobristKeys[16];
-U64 sideZobristKey;
+static U64 pieceZobristKeys[12][64];
+static U64 enpassantZobristKeys[65];
+static U64 castlingZobristKeys[16];
+static U64 sideZobristKey;
 
-void initializeRandomKeys() {
+static inline void initializeRandomKeys() {
     randomState = 1804289383; // reset random state
     for (int piece = P; piece <= k; ++piece){
         for (int square = 0; square < 64; ++square) {
@@ -78,7 +78,7 @@ void initializeRandomKeys() {
     }
 }
 
-U64 computeZobristHash(const Board *board) {
+static inline U64 computeZobristHash(const Board *board) {
     U64 hash = 0ULL;
     U64 bitboard;
     for (int piece = P; piece <= k; piece++){
@@ -100,7 +100,7 @@ U64 computeZobristHash(const Board *board) {
     return hash;
 }
 
-void clearBoard(Board* board) {
+static inline void clearBoard(Board* board) {
     memset(board->bitboards, 0, sizeof(board->bitboards));
     memset(board->occupancies, 0, sizeof(board->occupancies));
 
@@ -111,7 +111,7 @@ void clearBoard(Board* board) {
     board->halfMoveClock = 0; // Reset half-move clock
 }
 
-std::string boardToFEN(Board* board) {
+static inline std::string boardToFEN(Board* board) {
     std::string fen;
     for (int rank = 7; rank >= 0; --rank) {
         int emptyCount = 0;
@@ -156,7 +156,7 @@ std::string boardToFEN(Board* board) {
     return fen;
 }
 
-void printBoard(Board* board) {
+static inline void printBoard(Board* board) {
     U64* bitboards = board->bitboards;
     int sideToMove = board->sideToMove;
     int castlingRights = board->castlingRights;
@@ -201,7 +201,7 @@ void printBoard(Board* board) {
     std::cout << std::endl << std::endl;
 }
 
-void parseFEN(Board* board, const std::string& fen) {
+static inline void parseFEN(Board* board, const std::string& fen) {
     clearBoard(board);
     repetitionIndex = 0;
     std::istringstream iss(fen);
@@ -296,10 +296,18 @@ struct TTBucket {
 
 static_assert(sizeof(TTBucket) == 64, "TTBucket must be 64 bytes (one cache line)");
 
-TTBucket *TranspositionTable = NULL;
-uint32_t ttNumBuckets = 0;
-uint32_t ttBucketMask = 0;
-uint8_t ttGeneration = 0;
+#ifdef HASH_STATS
+static U64 hashHits = 0;
+static U64 hashExactHits = 0;
+static U64 hashAlphaHits = 0;
+static U64 hashBetaHits = 0;
+static U64 hashMoveOrderHits = 0;
+#endif
+
+static TTBucket *TranspositionTable = NULL;
+static uint32_t ttNumBuckets = 0;
+static uint32_t ttBucketMask = 0;
+static uint8_t ttGeneration = 0;
 
 static inline TTBucket* getTTBucket(U64 key) {
     return &TranspositionTable[(key >> 32) & ttBucketMask];
@@ -322,7 +330,7 @@ static inline int ttEntryQuality(const TTEntry &e) {
     return (int)e.depth - (ageDelta >> 2) * 4 + ((e.genBound & 3) == hashExact ? 2 : 0);
 }
 
-void clearTranspositionTable() {
+static inline void clearTranspositionTable() {
     if (TranspositionTable != NULL)
         memset(TranspositionTable, 0, (size_t)ttNumBuckets * sizeof(TTBucket));
 }
@@ -336,7 +344,7 @@ static inline uint32_t roundDownPow2(uint32_t v) {
     return (v >> 1) + 1;
 }
 
-void initializeTranspositionSize(int MB) {
+static inline void initializeTranspositionSize(int MB) {
     if (MB <= 0) {
         std::cout << "Invalid size for transposition table, must be greater than 0 MB" << std::endl;
         return;
@@ -359,7 +367,7 @@ void initializeTranspositionSize(int MB) {
     }
 }
 
-int hashfull() {
+static inline int hashfull() {
     int used = 0;
     int sampleBuckets = (ttNumBuckets < 1000) ? ttNumBuckets : 1000;
     for (int i = 0; i < sampleBuckets; i++)
@@ -399,7 +407,6 @@ static inline TTProbeResult probeHashEntry(Board *board, int alpha, int beta, in
                 result.ttEval = (int)entry->staticEval;
 
 #ifdef HASH_STATS
-            extern U64 hashHits, hashExactHits, hashAlphaHits, hashBetaHits, hashMoveOrderHits;
             hashHits++;
             if (entry->move != 0) hashMoveOrderHits++;
 #endif

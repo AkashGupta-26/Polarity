@@ -44,7 +44,7 @@ static inline int isSquareAttacked(const Board *board, int square, int side) {
     return 0;
 }
 
-void printAttackedSquares(const Board *board, int side) {
+static inline void printAttackedSquares(const Board *board, int side) {
     std::cout << "Attacked squares by " << (side == white ? "White" : "Black") << ":\n";
     U64 attacked = 0ULL;
     for (int square = 0; square < 64; ++square) {
@@ -498,7 +498,7 @@ static inline void generateCaptures(Board *board, MoveList *moves) {
     }
 }
 
-std::string moveToUCI(int move) {
+static inline std::string moveToUCI(int move) {
     int source = decodeSource(move);
     int target = decodeTarget(move);
     int promoted = decodePromoted(move);
@@ -528,11 +528,11 @@ std::string moveToUCI(int move) {
 }
 
 
-void printMove(int move){
+static inline void printMove(int move){
     std::cout << "Move: " << moveToUCI(move) << std::endl;
 }
 
-void printMoveList(const MoveList *list) {
+static inline void printMoveList(const MoveList *list) {
     int move, source, target, piece, promotedPiece, capture, doublePush, enPassant, castling;
     
     std::cout << "Move: " << "Piece " << "Capture " << "Double " << "Enpass " << "Castle" << std::endl;

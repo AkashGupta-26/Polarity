@@ -206,6 +206,7 @@ Multiple techniques are implemented to improve the search efficiency:
 | V2.15 | TT overhaul: clustered 4-way buckets, power-of-2 indexing, age replacement, prefetch, static eval caching, hashfull reporting | +38 |
 | V2.15.2 | NPS optimization: merged TT probe, hoisted movegen side indices, eager givesCheck, stride-2 repetition detection, compile-guarded hash stats | +50 vs V2.14 |
 | V2.15.3 | Remove dead eval code (rookBehindPassedBonus=0, pawnShieldBonus=0), add FEN generator to `d` command | — |
+| V2.15.4 | Add `static inline` to all header-defined functions, `static` to .cpp-local functions and global variables for ODR safety | +37 |
 
 ---
 ## Note on AI Assistance

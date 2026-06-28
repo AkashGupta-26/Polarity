@@ -11,9 +11,9 @@
 #define EG 1
 
 #ifdef TUNING_MODE
-#define EVAL_PARAM
+#define EVAL_PARAM static
 #else
-#define EVAL_PARAM const
+#define EVAL_PARAM static const
 #endif
 
 const int mirrorSquare[] = {
@@ -206,11 +206,11 @@ const int ProximityToLightCorner[64] = {
     7, 6, 5, 4, 3, 2, 1, 0
 };
 
-U64 fileMasks[64];
-U64 rankMasks[64];
+static U64 fileMasks[64];
+static U64 rankMasks[64];
 
-U64 isolatedPawnMasks[64];
-U64 passedPawnMasks[2][64];
+static U64 isolatedPawnMasks[64];
+static U64 passedPawnMasks[2][64];
 
 
 EVAL_PARAM int doublePawnPenalty = -10;
@@ -264,7 +264,7 @@ EVAL_PARAM int kingSafetyTable[] = {
   271, 298, 327, 357, 388, 400, 400, 400, 400, 400
 };
 
-U64 setFileRankMasks(int file, int rank) {
+static inline U64 setFileRankMasks(int file, int rank) {
     U64 mask = 0ULL;
     
     for (int r = 0; r < 8; r++){
@@ -284,7 +284,7 @@ U64 setFileRankMasks(int file, int rank) {
     return mask;
 }
 
-void initializeEvaluationMasks() {
+static inline void initializeEvaluationMasks() {
     for (int file = 0; file < 8; ++file) {
         for (int rank = 0; rank < 8; ++rank) {
             fileMasks[rank * 8 + file] = setFileRankMasks(file, -1);

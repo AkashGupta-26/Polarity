@@ -32,11 +32,11 @@ double REGULARIZATION = 0.0; // L2 regularization strength (set via CLI)
 std::vector<TuneParam>* globalParams = nullptr;
 int NUM_THREADS = std::max(1, (int)std::thread::hardware_concurrency() - 1);
 
-double sigmoid(int eval) {
+static double sigmoid(int eval) {
     return 1.0 / (1.0 + pow(10.0, -sigK * eval / 400.0));
 }
 
-double computeErrorChunk(const std::vector<TunePosition>& positions, int start, int end) {
+static double computeErrorChunk(const std::vector<TunePosition>& positions, int start, int end) {
     double totalError = 0.0;
     Board board;
     for (int i = start; i < end; i++) {
@@ -50,9 +50,9 @@ double computeErrorChunk(const std::vector<TunePosition>& positions, int start, 
     return totalError;
 }
 
-void syncBlackPieceValues();
+static void syncBlackPieceValues();
 
-double computeError(const std::vector<TunePosition>& positions) {
+static double computeError(const std::vector<TunePosition>& positions) {
     int n = positions.size();
     int chunkSize = n / NUM_THREADS;
     std::vector<std::thread> threads;
@@ -84,7 +84,7 @@ double computeError(const std::vector<TunePosition>& positions) {
     return mse;
 }
 
-double findOptimalK(const std::vector<TunePosition>& positions) {
+static double findOptimalK(const std::vector<TunePosition>& positions) {
     double bestK = 1.0;
     double bestError = 1e9;
     for (double k = 0.5; k <= 2.0; k += 0.01) {
@@ -100,7 +100,7 @@ double findOptimalK(const std::vector<TunePosition>& positions) {
     return bestK;
 }
 
-std::vector<TunePosition> loadPositions(const std::string& filename) {
+static std::vector<TunePosition> loadPositions(const std::string& filename) {
     std::vector<TunePosition> positions;
     std::ifstream file(filename);
     if (!file.is_open()) {
@@ -142,7 +142,7 @@ std::vector<TunePosition> loadPositions(const std::string& filename) {
     return positions;
 }
 
-void registerParams(std::vector<TuneParam>& params) {
+static void registerParams(std::vector<TuneParam>& params) {
     auto reg = [&](int* ptr, const std::string& name, int lo, int hi) {
         params.push_back({ptr, name, lo, hi, *ptr, 0, 0, 0});
     };
@@ -210,7 +210,7 @@ void registerParams(std::vector<TuneParam>& params) {
     }
 }
 
-void computeGradients(std::vector<TunePosition>& positions, std::vector<TuneParam>& params, int step) {
+static void computeGradients(std::vector<TunePosition>& positions, std::vector<TuneParam>& params, int step) {
     syncBlackPieceValues();
     double baseError = computeError(positions);
 
@@ -231,7 +231,7 @@ void computeGradients(std::vector<TunePosition>& positions, std::vector<TunePara
     }
 }
 
-void adamOptimize(std::vector<TunePosition>& positions, std::vector<TuneParam>& params) {
+static void adamOptimize(std::vector<TunePosition>& positions, std::vector<TuneParam>& params) {
     const double alpha = 2.0;    // Learning rate (in integer param units)
     const double beta1 = 0.9;
     const double beta2 = 0.999;
@@ -315,7 +315,7 @@ void adamOptimize(std::vector<TunePosition>& positions, std::vector<TuneParam>& 
     std::cout << "\nFinal error: " << bestError << std::endl;
 }
 
-void localSearch(std::vector<TunePosition>& positions, std::vector<TuneParam>& params) {
+static void localSearch(std::vector<TunePosition>& positions, std::vector<TuneParam>& params) {
     syncBlackPieceValues();
     double bestError = computeError(positions);
     std::cout << "\nLocal search refinement from error: " << bestError << std::endl;
@@ -365,14 +365,14 @@ void localSearch(std::vector<TunePosition>& positions, std::vector<TuneParam>& p
     std::cout << "Local search complete after " << epoch << " epochs, final error: " << bestError << std::endl;
 }
 
-void syncBlackPieceValues() {
+static void syncBlackPieceValues() {
     for (int i = 0; i < 5; i++) {
         pieceValue[0][i + 6] = -pieceValue[0][i];
         pieceValue[1][i + 6] = -pieceValue[1][i];
     }
 }
 
-void printResults(const std::vector<TuneParam>& params) {
+static void printResults(const std::vector<TuneParam>& params) {
     syncBlackPieceValues();
 
     std::cout << "\n=== Tuned Values ===" << std::endl;

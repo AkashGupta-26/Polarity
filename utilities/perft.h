@@ -6,9 +6,9 @@
 #include "../src/precalculated_move_tables.h"
 #include "../src/moves.h"
 
-U64 nodes = 0;
+static U64 nodes = 0;
 
-void perft(Board *board, int depth) {
+static inline void perft(Board *board, int depth) {
     if (depth == 0) {
         nodes++;
         return;
@@ -26,7 +26,7 @@ void perft(Board *board, int depth) {
     }
 }
 
-int perftTest(Board *board, int depth, int verbose = 0) {
+static inline int perftTest(Board *board, int depth, int verbose = 0) {
     nodes = 0;
     MoveList moves[1];
     generateMoves(board, moves);
